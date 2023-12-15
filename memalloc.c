@@ -3,66 +3,64 @@
 #include <stdio.h>
 #include <unistd.h>
 
-typedef union header {
-    struct {
-        size_t size;
-        unsigned is_free;
-        union header* next;
-    } s;
-    char stub[16];
-} header_t;
+struct header {
+    size_t size;
+    unsigned is_free;
+    struct header *next;
 
-header_t *head = NULL, *tail = NULL;
-pthread_mutex_t global_malloc_lock;
+};
 
-header_t *get_free_block(size_t size)
+struct header *head = NULL, *tail = NULL;
+pthread_mutex_t mutex;
+
+struct header *get_free_block(size_t size)
 {
-	header_t *curr = head;
+	struct header *curr = head;
+
 	while(curr) {
-		if (curr->s.is_free && curr->s.size >= size)
+		if (curr->is_free && curr->size >= size)
 			return curr;
-		curr = curr->s.next;
+
+		curr = curr->next;
 	}
+
 	return NULL;
 }
 
+/* Returns memory on the heap, assumes a sensible size value */
 void *malloc(size_t size)
 {
-	size_t total_size;
+	struct header *header;
+	size_t total_size = sizeof(*header) + size;
 	void *block;
-	header_t *header;
 
-	if (!size)
-		return NULL;
-
-	pthread_mutex_lock(&global_malloc_lock);
+	pthread_mutex_lock(&mutex);
 
 	header = get_free_block(size);
 	if (header) {
-
         /* Use block that we previously allocated */
-		header->s.is_free = 0;
-		pthread_mutex_unlock(&global_malloc_lock);
-		return (void*)(header + 1);
+		header->is_free = 0;
+		goto out;
 	}
-	total_size = sizeof(header_t) + size;
+
 	block = sbrk(total_size);
 	if (sbrk(total_size) == (void*) -1) {
-		pthread_mutex_unlock(&global_malloc_lock);
+		pthread_mutex_unlock(&mutex);
 		return NULL;
 	}
 
 	header = block;
-	header->s.size = size;
-	header->s.is_free = 0;
-	header->s.next = NULL;
+	header->size = size;
+	header->is_free = 0;
+	header->next = NULL;
 	if (!head)
 		head = header;
 	if (tail)
-		tail->s.next = header;
+		tail->next = header;
 
 	tail = header;
-	pthread_mutex_unlock(&global_malloc_lock);
+out:
+	pthread_mutex_unlock(&mutex);
 
     /* Return the start of allocated memory (skip the header) */
 	return (void*)(header + 1);
@@ -70,71 +68,64 @@ void *malloc(size_t size)
 
 void free(void *block)
 {
-	header_t *header, *tmp;
+	struct header *header, *tmp;
 	void *program_break;
 
-	if (!block)
-		return;
+	pthread_mutex_lock(&mutex);
 
-	pthread_mutex_lock(&global_malloc_lock);
-
-	header = (header_t*)block - 1;
+	header = (struct header*)block - 1;
 
 	program_break = sbrk(0);
-	if ((char*)block + header->s.size == program_break) {
+	if ((char*)block + header->size == program_break) {
+		/* Block is at the top of the heap */
 		if (head == tail)
 			head = tail = NULL;
 		else {
 			tmp = head;
 			while (tmp) {
-				if(tmp->s.next == tail) {
-					tmp->s.next = NULL;
+				if(tmp->next == tail) {
+					tmp->next = NULL;
 					tail = tmp;
 				}
-				tmp = tmp->s.next;
+				tmp = tmp->next;
 			}
 		}
-		sbrk(0 - sizeof(header_t) - header->s.size);
-		pthread_mutex_unlock(&global_malloc_lock);
-		return;
+		sbrk(0 - sizeof(struct header) - header->size);
+		goto out;
 	}
-	header->s.is_free = 1;
-	pthread_mutex_unlock(&global_malloc_lock);
+	header->is_free = 1;
+out:
+	pthread_mutex_unlock(&mutex);
 }
 
 void *calloc(size_t num, size_t nsize)
 {
 	size_t size;
 	void *block;
-	if (!num || !nsize)
-		return NULL;
-	size = num * nsize;
 
-	if (nsize != size / num)
-		return NULL;
+	size = num * nsize;
 
 	block = malloc(size);
 	if (!block)
 		return NULL;
 
 	memset(block, 0, size);
+
 	return block;
 }
 
 void *realloc(void *block, size_t size)
 {
-	header_t *header;
+	struct header *header;
 	void *ret;
-	if (!block || !size)
-		return malloc(size);
 
-	header = (header_t*)block - 1;
-	if (header->s.size >= size)
+	header = (struct header*)block - 1;
+	if (header->size >= size)
 		return block;
 
 	ret = malloc(size);
 	if (ret) {
-		memcpy(ret, block, header->s.size);
+		memcpy(ret, block, header->size);
 		free(block);
 	}
 
