@@ -1,0 +1,161 @@
+# skills.dat – player skill definitions
+# One [skill] block per skill; class= must come before the first skill of that class.
+
+[warrior]
+class=warrior
+
+[skill]
+name=Power Strike
+desc=A devastating blow dealing 150% strength damage.
+effect=damage
+base_value=150
+apply_status=none
+mana_cost=8
+hits=1
+max_level=5
+
+[skill]
+name=Battle Cry
+desc=Boosts your strength for 3 turns.
+effect=buff
+base_value=6
+apply_status=powered
+mana_cost=10
+hits=1
+max_level=5
+
+[skill]
+name=Shield Bash
+desc=A stunning strike that skips the enemy's next turn.
+effect=stun
+base_value=80
+apply_status=stunned
+mana_cost=12
+hits=1
+max_level=5
+
+[skill]
+name=Whirlwind
+desc=Spin and strike twice in quick succession.
+effect=multihit
+base_value=70
+apply_status=none
+mana_cost=14
+hits=2
+max_level=5
+
+[skill]
+name=Fortify
+desc=Brace yourself, raising defense for 3 turns.
+effect=buff
+base_value=5
+apply_status=shielded
+mana_cost=10
+hits=1
+max_level=5
+
+[rogue]
+class=rogue
+
+[skill]
+name=Backstab
+desc=A swift hidden attack dealing speed-scaled damage.
+effect=damage
+base_value=130
+apply_status=none
+mana_cost=8
+hits=1
+max_level=5
+
+[skill]
+name=Poison Blade
+desc=Coats your blade with poison; enemy takes 3 dmg/turn.
+effect=dot
+base_value=20
+apply_status=poisoned
+mana_cost=10
+hits=1
+max_level=5
+
+[skill]
+name=Shadow Step
+desc=Phase through shadow to dodge the next attack.
+effect=dodge
+base_value=0
+apply_status=dodging
+mana_cost=8
+hits=1
+max_level=5
+
+[skill]
+name=Twin Strike
+desc=Two rapid strikes in a single turn.
+effect=multihit
+base_value=65
+apply_status=none
+mana_cost=12
+hits=2
+max_level=5
+
+[skill]
+name=Smoke Bomb
+desc=Blind the enemy, reducing their speed for 3 turns.
+effect=debuff
+base_value=4
+apply_status=slowed
+mana_cost=10
+hits=1
+max_level=5
+
+[mage]
+class=mage
+
+[skill]
+name=Fireball
+desc=Launch a ball of fire for high magic damage.
+effect=damage
+base_value=160
+apply_status=none
+mana_cost=12
+hits=1
+max_level=5
+
+[skill]
+name=Ice Shard
+desc=A shard of ice that slows the enemy.
+effect=damage
+base_value=110
+apply_status=slowed
+mana_cost=10
+hits=1
+max_level=5
+
+[skill]
+name=Chain Lightning
+desc=Unleash a bolt of lightning for massive damage.
+effect=damage
+base_value=200
+apply_status=none
+mana_cost=20
+hits=1
+max_level=5
+
+[skill]
+name=Mana Shield
+desc=Erect a barrier that absorbs the next attack.
+effect=dodge
+base_value=0
+apply_status=shielded
+mana_cost=10
+hits=1
+max_level=5
+
+[skill]
+name=Heal
+desc=Channel life energy to restore your health.
+effect=heal
+base_value=40
+apply_status=none
+mana_cost=14
+hits=1
+max_level=5

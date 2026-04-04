@@ -1,25 +1,26 @@
 #include "combat.h"
 #include "player.h"
 #include "data.h"
+#include "events.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
 
+#define EVT(type, value, for_player) \
+    evt_push(&g_ctx.events, (type), (value), (for_player))
+
 // ── Forward declarations ──────────────────────────────────────────────────
-extern const int           g_enemies_count;
 typedef struct { SkillEffectType effect; int value; const char *name; } EnemySkill;
-extern const EnemySkill    g_enemy_skill_table[];
-typedef struct { int life; int mana; } ConsumeEffect;
-extern const ConsumeEffect g_consume_effect[];
-extern const int           g_consume_effect_count;
+extern const EnemySkill g_enemy_skill_table[];
+extern const int        g_consume_effect_count;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 void combat_log(const char *fmt, ...)
 {
-    CombatState *cs = &g_combat;
+    CombatState *cs = &g_ctx.combat;
     if (cs->log_count >= MAX_COMBAT_LOG) {
         // Shift entries up
         memmove(cs->log[0], cs->log[1],
@@ -53,22 +54,22 @@ static int calc_damage(int attacker_str, int pct, int defender_def)
 // Apply a status to the enemy (overrides if stronger)
 static void apply_enemy_status(StatusFlags flag, int turns)
 {
-    g_combat.enemy.status       |= flag;
-    g_combat.enemy.status_turns  = turns;
+    g_ctx.combat.enemy.status       |= flag;
+    g_ctx.combat.enemy.status_turns  = turns;
 }
 
 // Apply a status to the player
 static void apply_player_status(StatusFlags flag, int turns)
 {
-    g_player.status       |= flag;
-    g_player.status_turns  = turns;
+    g_ctx.player.status       |= flag;
+    g_ctx.player.status_turns  = turns;
 }
 
 // Tick enemy status effects; returns damage dealt to enemy
 static int enemy_tick_status(void)
 {
     int dmg = 0;
-    EnemyDef *e = &g_combat.enemy;
+    EnemyDef *e = &g_ctx.combat.enemy;
     if (e->status & STATUS_POISONED) {
         dmg = 3;
         e->status_turns--;
@@ -82,7 +83,7 @@ static int enemy_tick_status(void)
 void combat_start(GatewayId gw, int floor_idx)
 {
     srand((unsigned)time(NULL));
-    CombatState *cs = &g_combat;
+    CombatState *cs = &g_ctx.combat;
     memset(cs, 0, sizeof(*cs));
 
     cs->gateway = gw;
@@ -111,7 +112,7 @@ void combat_start(GatewayId gw, int floor_idx)
 
 bool combat_is_over(void)
 {
-    return g_combat.combat_over;
+    return g_ctx.combat.combat_over;
 }
 
 // ── Player turn actions ───────────────────────────────────────────────────
@@ -119,32 +120,32 @@ bool combat_is_over(void)
 static void end_player_turn(void)
 {
     // Tick player status
-    int pdmg = player_tick_status(&g_player);
+    int pdmg = player_tick_status(&g_ctx.player);
     if (pdmg > 0) {
-        g_player.current_life -= pdmg;
+        g_ctx.player.current_life -= pdmg;
         combat_log("Poison deals %d to you!", pdmg);
     }
-    if (g_player.current_life <= 0) {
-        g_player.current_life = 0;
-        g_combat.combat_over = true;
-        g_combat.player_won  = false;
+    if (g_ctx.player.current_life <= 0) {
+        g_ctx.player.current_life = 0;
+        g_ctx.combat.combat_over = true;
+        g_ctx.combat.player_won  = false;
         combat_log("You have been defeated...");
         return;
     }
-    g_combat.player_turn = false;
+    g_ctx.combat.player_turn = false;
 }
 
 bool combat_action_attack(void)
 {
-    if (!g_combat.player_turn || g_combat.combat_over) return false;
-    if (g_player.status & STATUS_STUNNED) {
-        g_player.status &= ~STATUS_STUNNED;
+    if (!g_ctx.combat.player_turn || g_ctx.combat.combat_over) return false;
+    if (g_ctx.player.status & STATUS_STUNNED) {
+        g_ctx.player.status &= ~STATUS_STUNNED;
         combat_log("You are stunned and lose your turn!");
         end_player_turn();
         return true;
     }
 
-    EnemyDef *e = &g_combat.enemy;
+    EnemyDef *e = &g_ctx.combat.enemy;
     if (e->status & STATUS_DODGING) {
         e->status &= ~STATUS_DODGING;
         combat_log("%s dodges your attack!", e->name);
@@ -158,21 +159,24 @@ bool combat_action_attack(void)
         e->status &= ~STATUS_SHIELDED;
     }
     e->current_life -= dmg;
+    EVT(EVT_HIT_ENEMY, dmg, false);
     combat_log("You attack for %d damage.", dmg);
 
     // Tick enemy poison
     int edot = enemy_tick_status();
     if (edot > 0) {
         e->current_life -= edot;
+        EVT(EVT_POISON_TICK, edot, false);
         combat_log("Poison deals %d to %s!", edot, e->name);
     }
 
     if (e->current_life <= 0) {
         e->current_life = 0;
-        g_combat.combat_over = true;
-        g_combat.player_won  = true;
+        g_ctx.combat.combat_over = true;
+        g_ctx.combat.player_won  = true;
         combat_log("You defeated %s!", e->name);
         combat_apply_rewards();
+        EVT(EVT_COMBAT_WIN, 0, false);
         return true;
     }
     end_player_turn();
@@ -181,25 +185,25 @@ bool combat_action_attack(void)
 
 bool combat_action_skill(int skill_idx)
 {
-    if (!g_combat.player_turn || g_combat.combat_over) return false;
+    if (!g_ctx.combat.player_turn || g_ctx.combat.combat_over) return false;
     if (skill_idx < 0 || skill_idx >= MAX_SKILLS) return false;
 
-    const SkillDef *sk = &skills_for_class(g_player.pc)[skill_idx];
-    int slvl = g_player.skill_level[skill_idx];    // 1..5
+    const SkillDef *sk = &skills_for_class(g_ctx.player.pc)[skill_idx];
+    int slvl = g_ctx.player.skill_level[skill_idx];    // 1..5
     int cost  = sk->mana_cost + (slvl - 1) * 2;   // slight increase per level
-    if (g_player.current_mana < cost) {
+    if (g_ctx.player.current_mana < cost) {
         combat_log("Not enough mana! (need %d)", cost);
         return false;
     }
-    if (g_player.status & STATUS_STUNNED) {
-        g_player.status &= ~STATUS_STUNNED;
+    if (g_ctx.player.status & STATUS_STUNNED) {
+        g_ctx.player.status &= ~STATUS_STUNNED;
         combat_log("You are stunned and lose your turn!");
         end_player_turn();
         return true;
     }
 
-    g_player.current_mana -= cost;
-    EnemyDef *e = &g_combat.enemy;
+    g_ctx.player.current_mana -= cost;
+    EnemyDef *e = &g_ctx.combat.enemy;
 
     // Scale effect with skill level
     int scaled_val = sk->base_value + (slvl - 1) * (sk->base_value / 5);
@@ -218,6 +222,8 @@ bool combat_action_skill(int skill_idx)
                 e->status &= ~STATUS_SHIELDED;
             }
             e->current_life -= dmg;
+            EVT(EVT_HIT_ENEMY, dmg, false);
+            EVT(EVT_SKILL_USE, 0, true);
             combat_log("%s hits for %d!", sk->name, dmg);
             if (sk->apply_status && sk->apply_status != STATUS_NONE) {
                 apply_enemy_status(sk->apply_status, 3);
@@ -237,23 +243,27 @@ bool combat_action_skill(int skill_idx)
                 e->current_life -= dmg;
                 total += dmg;
             }
+            EVT(EVT_HIT_ENEMY, total, false);
+            EVT(EVT_SKILL_USE, 0, true);
             combat_log("%s hits %d times for %d total!", sk->name, hits, total);
             break;
         }
         case SKILL_EFFECT_HEAL: {
             int hp = scaled_val + (slvl - 1) * 10;
-            g_player.current_life = MIN(g_player.current_life + hp,
+            g_ctx.player.current_life = MIN(g_ctx.player.current_life + hp,
                                         player_effective_life());
+            EVT(EVT_HEAL_PLAYER, hp, true);
+            EVT(EVT_SKILL_USE, 0, true);
             combat_log("%s restores %d life.", sk->name, hp);
             break;
         }
         case SKILL_EFFECT_BUFF: {
             int delta = sk->base_value + slvl;
             if (sk->apply_status == STATUS_POWERED) {
-                g_combat.str_bonus += delta;
+                g_ctx.combat.str_bonus += delta;
                 combat_log("Strength +%d for this battle!", delta);
             } else if (sk->apply_status == STATUS_SHIELDED) {
-                g_combat.def_bonus += delta;
+                g_ctx.combat.def_bonus += delta;
                 apply_player_status(STATUS_SHIELDED, 3);
                 combat_log("Defense +%d for 3 turns!", delta);
             }
@@ -290,15 +300,17 @@ bool combat_action_skill(int skill_idx)
     int edot = enemy_tick_status();
     if (edot > 0 && e->current_life > 0) {
         e->current_life -= edot;
+        EVT(EVT_POISON_TICK, edot, false);
         combat_log("Poison deals %d to %s!", edot, e->name);
     }
 
     if (e->current_life <= 0) {
         e->current_life = 0;
-        g_combat.combat_over = true;
-        g_combat.player_won  = true;
+        g_ctx.combat.combat_over = true;
+        g_ctx.combat.player_won  = true;
         combat_log("You defeated %s!", e->name);
         combat_apply_rewards();
+        EVT(EVT_COMBAT_WIN, 0, false);
         return true;
     }
     end_player_turn();
@@ -307,8 +319,8 @@ bool combat_action_skill(int skill_idx)
 
 bool combat_action_use_item(int item_id)
 {
-    if (!g_combat.player_turn || g_combat.combat_over) return false;
-    if (!player_use_consumable(&g_player, item_id)) {
+    if (!g_ctx.combat.player_turn || g_ctx.combat.combat_over) return false;
+    if (!player_use_consumable(&g_ctx.player, item_id)) {
         combat_log("Can't use that item.");
         return false;
     }
@@ -319,12 +331,12 @@ bool combat_action_use_item(int item_id)
 
 bool combat_action_flee(void)
 {
-    if (!g_combat.player_turn || g_combat.combat_over) return false;
+    if (!g_ctx.combat.player_turn || g_ctx.combat.combat_over) return false;
     // 50% chance to flee
     if (rand() % 2 == 0) {
         combat_log("You successfully fled!");
-        g_combat.combat_over = true;
-        g_combat.fled        = true;
+        g_ctx.combat.combat_over = true;
+        g_ctx.combat.fled        = true;
     } else {
         combat_log("Couldn't escape!");
         end_player_turn();
@@ -336,15 +348,15 @@ bool combat_action_flee(void)
 
 void combat_enemy_turn(void)
 {
-    if (g_combat.combat_over || g_combat.player_turn) return;
+    if (g_ctx.combat.combat_over || g_ctx.combat.player_turn) return;
 
-    EnemyDef *e = &g_combat.enemy;
+    EnemyDef *e = &g_ctx.combat.enemy;
 
     // Tick enemy status
     if (e->status & STATUS_STUNNED) {
         e->status &= ~STATUS_STUNNED;
         combat_log("%s is stunned and loses their turn!", e->name);
-        g_combat.player_turn = true;
+        g_ctx.combat.player_turn = true;
         return;
     }
     int edot = enemy_tick_status();
@@ -353,8 +365,8 @@ void combat_enemy_turn(void)
         combat_log("Poison deals %d to %s!", edot, e->name);
         if (e->current_life <= 0) {
             e->current_life      = 0;
-            g_combat.combat_over = true;
-            g_combat.player_won  = true;
+            g_ctx.combat.combat_over = true;
+            g_ctx.combat.player_won  = true;
             combat_log("You defeated %s!", e->name);
             combat_apply_rewards();
             return;
@@ -372,21 +384,23 @@ void combat_enemy_turn(void)
 
     if (action == 0) {
         // Basic attack
-        if (g_player.status & STATUS_DODGING) {
-            g_player.status &= ~STATUS_DODGING;
+        if (g_ctx.player.status & STATUS_DODGING) {
+            g_ctx.player.status &= ~STATUS_DODGING;
             combat_log("You dodge %s's attack!", e->name);
-        } else if (g_player.status & STATUS_SHIELDED) {
+        } else if (g_ctx.player.status & STATUS_SHIELDED) {
             int dmg = calc_damage(e->base_stats.strength, 100,
                                   player_effective_def());
             dmg = dmg * 70 / 100;
-            g_player.status_turns--;
-            if (g_player.status_turns <= 0) g_player.status &= ~STATUS_SHIELDED;
-            g_player.current_life -= dmg;
+            g_ctx.player.status_turns--;
+            if (g_ctx.player.status_turns <= 0) g_ctx.player.status &= ~STATUS_SHIELDED;
+            g_ctx.player.current_life -= dmg;
+            EVT(EVT_HIT_PLAYER, dmg, true);
             combat_log("%s attacks for %d (shielded).", e->name, dmg);
         } else {
             int dmg = calc_damage(e->base_stats.strength, 100,
                                   player_effective_def());
-            g_player.current_life -= dmg;
+            g_ctx.player.current_life -= dmg;
+            EVT(EVT_HIT_PLAYER, dmg, true);
             combat_log("%s attacks for %d.", e->name, dmg);
         }
     } else {
@@ -395,19 +409,19 @@ void combat_enemy_turn(void)
         const EnemySkill *sk = &g_enemy_skill_table[sk_id];
         switch (sk->effect) {
             case SKILL_EFFECT_DAMAGE: {
-                if (g_player.status & STATUS_DODGING) {
-                    g_player.status &= ~STATUS_DODGING;
+                if (g_ctx.player.status & STATUS_DODGING) {
+                    g_ctx.player.status &= ~STATUS_DODGING;
                     combat_log("You dodge %s's %s!", e->name, sk->name);
                 } else {
                     int dmg = calc_damage(e->base_stats.strength, sk->value,
                                           player_effective_def());
-                    if (g_player.status & STATUS_SHIELDED) {
+                    if (g_ctx.player.status & STATUS_SHIELDED) {
                         dmg = dmg * 70 / 100;
-                        g_player.status_turns--;
-                        if (g_player.status_turns <= 0)
-                            g_player.status &= ~STATUS_SHIELDED;
+                        g_ctx.player.status_turns--;
+                        if (g_ctx.player.status_turns <= 0)
+                            g_ctx.player.status &= ~STATUS_SHIELDED;
                     }
-                    g_player.current_life -= dmg;
+                    g_ctx.player.current_life -= dmg;
                     combat_log("%s uses %s for %d!", e->name, sk->name, dmg);
                 }
                 break;
@@ -418,7 +432,7 @@ void combat_enemy_turn(void)
                 break;
             }
             case SKILL_EFFECT_DEBUFF: {
-                g_combat.spd_bonus -= sk->value;
+                g_ctx.combat.spd_bonus -= sk->value;
                 combat_log("%s uses %s! Your speed is reduced.", e->name, sk->name);
                 break;
             }
@@ -430,7 +444,7 @@ void combat_enemy_turn(void)
             case SKILL_EFFECT_STUN: {
                 int dmg = calc_damage(e->base_stats.strength, sk->value,
                                       player_effective_def());
-                g_player.current_life -= dmg;
+                g_ctx.player.current_life -= dmg;
                 apply_player_status(STATUS_STUNNED, 1);
                 combat_log("%s uses %s for %d + stun!", e->name, sk->name, dmg);
                 break;
@@ -445,32 +459,35 @@ void combat_enemy_turn(void)
         }
     }
 
-    if (g_player.current_life <= 0) {
-        g_player.current_life = 0;
-        g_combat.combat_over  = true;
-        g_combat.player_won   = false;
+    if (g_ctx.player.current_life <= 0) {
+        g_ctx.player.current_life = 0;
+        g_ctx.combat.combat_over  = true;
+        g_ctx.combat.player_won   = false;
+        EVT(EVT_COMBAT_LOSE, 0, true);
         combat_log("You have been defeated...");
         return;
     }
-    g_combat.player_turn = true;
+    g_ctx.combat.player_turn = true;
 }
 
 // ── Rewards ───────────────────────────────────────────────────────────────
 
 void combat_apply_rewards(void)
 {
-    if (!g_combat.player_won) return;
-    EnemyDef *e  = &g_combat.enemy;
-    g_player.gold += e->gold_reward;
-    bool levelled  = player_add_xp(&g_player, e->xp_reward);
+    if (!g_ctx.combat.player_won) return;
+    EnemyDef *e  = &g_ctx.combat.enemy;
+    g_ctx.player.gold += e->gold_reward;
+    bool levelled  = player_add_xp(&g_ctx.player, e->xp_reward);
     combat_log("Gained %d XP, %d gold.", e->xp_reward, e->gold_reward);
-    if (levelled)
-        combat_log("LEVEL UP! Now level %d!", g_player.level);
+    if (levelled) {
+        combat_log("LEVEL UP! Now level %d!", g_ctx.player.level);
+        EVT(EVT_LEVEL_UP, g_ctx.player.level, true);
+    }
     // Advance gateway progress
-    GatewayId gw  = g_combat.gateway;
-    int floor_idx = g_combat.floor;
-    if (floor_idx >= g_player.gw_progress[gw])
-        g_player.gw_progress[gw] = floor_idx + 1;
-    if (g_player.gw_progress[gw] >= GATEWAY_DEPTH)
-        g_player.gw_complete[gw] = true;
+    GatewayId gw  = g_ctx.combat.gateway;
+    int floor_idx = g_ctx.combat.floor;
+    if (floor_idx >= g_ctx.player.gw_progress[gw])
+        g_ctx.player.gw_progress[gw] = floor_idx + 1;
+    if (g_ctx.player.gw_progress[gw] >= GATEWAY_DEPTH)
+        g_ctx.player.gw_complete[gw] = true;
 }

@@ -2,6 +2,8 @@
 #include "combat.h"
 #include "player.h"
 #include "data.h"
+#include "scene.h"
+#include "game.h"
 
 extern const int g_shop_adv[];
 extern const int g_shop_adv_count;
@@ -27,12 +29,12 @@ bool hub_location_unlocked(HubLocation loc)
     switch (loc) {
         case HUB_GW_MONSTER:
             // Unlocked after completing floor 2 of Human Gateway
-            return g_player.gw_progress[GW_HUMAN] >= 2;
+            return g_ctx.player.gw_progress[GW_HUMAN] >= 2;
         case HUB_GW_DARK:
-            return g_player.gw_complete[GW_HUMAN];
+            return g_ctx.player.gw_complete[GW_HUMAN];
         case HUB_SHOP_ADV:
             // Advanced shop after level 8
-            return g_player.level >= 8;
+            return g_ctx.player.level >= 8;
         default:
             return true;
     }
@@ -42,50 +44,50 @@ void hub_enter(HubLocation loc)
 {
     switch (loc) {
         case HUB_SHOP_BASIC:
-            g_shop.item_ids = g_shop_basic;
-            g_shop.count    = g_shop_basic_count;
-            g_shop.selected = 0;
-            g_scene = SCENE_SHOP;
+            g_ctx.shop.item_ids = g_shop_basic;
+            g_ctx.shop.count    = g_shop_basic_count;
+            g_ctx.shop.selected = 0;
+            scene_replace(&g_ctx.scenes, SCENE_SHOP);
             break;
         case HUB_SHOP_MID:
-            g_shop.item_ids = g_shop_mid;
-            g_shop.count    = g_shop_mid_count;
-            g_shop.selected = 0;
-            g_scene = SCENE_SHOP;
+            g_ctx.shop.item_ids = g_shop_mid;
+            g_ctx.shop.count    = g_shop_mid_count;
+            g_ctx.shop.selected = 0;
+            scene_replace(&g_ctx.scenes, SCENE_SHOP);
             break;
         case HUB_SHOP_ADV:
-            g_shop.item_ids = g_shop_adv;
-            g_shop.count    = g_shop_adv_count;
-            g_shop.selected = 0;
-            g_scene = SCENE_SHOP;
+            g_ctx.shop.item_ids = g_shop_adv;
+            g_ctx.shop.count    = g_shop_adv_count;
+            g_ctx.shop.selected = 0;
+            scene_replace(&g_ctx.scenes, SCENE_SHOP);
             break;
         case HUB_SKILLS:
-            g_scene = SCENE_SKILLS;
+            scene_replace(&g_ctx.scenes, SCENE_SKILLS);
             break;
         case HUB_INVENTORY:
-            g_scene = SCENE_INVENTORY;
+            scene_replace(&g_ctx.scenes, SCENE_INVENTORY);
             break;
         case HUB_GW_HUMAN:
-            g_scene = SCENE_GATEWAY_SELECT;
+            scene_replace(&g_ctx.scenes, SCENE_GATEWAY_SELECT);
             // Store gateway id for gateway select screen
-            g_combat.gateway = GW_HUMAN;
+            g_ctx.combat.gateway = GW_HUMAN;
             break;
         case HUB_GW_MONSTER:
-            g_scene = SCENE_GATEWAY_SELECT;
-            g_combat.gateway = GW_MONSTER;
+            scene_replace(&g_ctx.scenes, SCENE_GATEWAY_SELECT);
+            g_ctx.combat.gateway = GW_MONSTER;
             break;
         case HUB_GW_DARK:
-            g_scene = SCENE_GATEWAY_SELECT;
-            g_combat.gateway = GW_DARK_RIFT;
+            scene_replace(&g_ctx.scenes, SCENE_GATEWAY_SELECT);
+            g_ctx.combat.gateway = GW_DARK_RIFT;
             break;
         case HUB_TRAINING: {
             // Training: fight a weaker version of the first enemy for XP only
             // Reuse Human Gateway floor 0 but with a training flag
             combat_start(GW_HUMAN, 0);
             // Training doesn't advance gateway progress – handled in apply_rewards
-            g_combat.enemy.xp_reward   = 5;
-            g_combat.enemy.gold_reward = 0;
-            g_scene = SCENE_COMBAT;
+            g_ctx.combat.enemy.xp_reward   = 5;
+            g_ctx.combat.enemy.gold_reward = 0;
+            scene_replace(&g_ctx.scenes, SCENE_COMBAT);
             break;
         }
         default:

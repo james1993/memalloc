@@ -1,0 +1,207 @@
+# items.dat – item definitions (id = order of appearance, 0-based)
+# For consumables: heal_life / heal_mana specify the restoration amounts.
+
+[item]
+name=Nothing
+type=none
+price=0
+
+# ── Weapons ──────────────────────────────────
+[item]
+name=Iron Knife
+type=weapon
+bonus_str=2
+bonus_spd=1
+price=50
+
+[item]
+name=Energy Knife
+type=weapon
+bonus_mana=5
+bonus_str=3
+bonus_spd=2
+price=100
+
+[item]
+name=Silver Knife
+type=weapon
+bonus_str=4
+bonus_spd=3
+price=160
+
+[item]
+name=Spiked Axe
+type=weapon
+bonus_str=6
+price=200
+
+[item]
+name=Heavy Blade
+type=weapon
+bonus_str=8
+bonus_def=1
+price=280
+
+[item]
+name=Katana
+type=weapon
+bonus_str=7
+bonus_spd=2
+price=320
+
+[item]
+name=Shadow Katana
+type=weapon
+bonus_mana=8
+bonus_str=10
+bonus_spd=3
+price=500
+
+[item]
+name=Fusion Edge
+type=weapon
+bonus_mana=10
+bonus_str=12
+bonus_spd=2
+price=700
+
+[item]
+name=Ion Bo
+type=weapon
+bonus_mana=15
+bonus_str=8
+bonus_spd=5
+price=650
+
+[item]
+name=Golden Blade
+type=weapon
+bonus_life=5
+bonus_mana=5
+bonus_str=14
+bonus_spd=2
+bonus_def=2
+price=1000
+
+# ── Armor ──────────────────────────────────
+[item]
+name=Leather Armour
+type=armor
+bonus_life=10
+bonus_def=1
+price=60
+
+[item]
+name=Metal Plates
+type=armor
+bonus_life=15
+bonus_spd=-1
+bonus_def=3
+price=140
+
+[item]
+name=Metal Armour
+type=armor
+bonus_life=20
+bonus_str=1
+bonus_spd=-1
+bonus_def=4
+price=220
+
+[item]
+name=Snake Skin
+type=armor
+bonus_life=12
+bonus_mana=5
+bonus_spd=2
+bonus_def=2
+price=260
+
+[item]
+name=Shadow Armour
+type=armor
+bonus_life=25
+bonus_mana=10
+bonus_spd=1
+bonus_def=6
+price=480
+
+[item]
+name=Golden Armour
+type=armor
+bonus_life=30
+bonus_mana=5
+bonus_str=2
+bonus_def=8
+price=800
+
+# ── Accessories ──────────────────────────────────
+[item]
+name=Leather Wrist
+type=accessory
+bonus_str=1
+bonus_spd=1
+price=40
+
+[item]
+name=Metal Wrist
+type=accessory
+bonus_str=2
+bonus_def=1
+price=80
+
+[item]
+name=Bandana
+type=accessory
+bonus_life=5
+bonus_spd=2
+price=70
+
+[item]
+name=Metal Band
+type=accessory
+bonus_life=5
+bonus_str=1
+bonus_spd=1
+bonus_def=1
+price=130
+
+[item]
+name=Focus Ring
+type=accessory
+bonus_mana=15
+bonus_spd=2
+price=200
+
+[item]
+name=Warrior Ring
+type=accessory
+bonus_str=4
+bonus_def=2
+price=300
+
+# ── Consumables ──────────────────────────────────
+[item]
+name=Small Potion
+type=consumable
+heal_life=30
+price=30
+
+[item]
+name=Large Potion
+type=consumable
+heal_life=80
+price=80
+
+[item]
+name=Mana Vial
+type=consumable
+heal_mana=40
+price=40
+
+[item]
+name=Elixir
+type=consumable
+heal_life=60
+heal_mana=40
+price=150

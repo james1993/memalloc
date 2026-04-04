@@ -8,6 +8,9 @@ bool ui_button(Rectangle r, const char *label, bool enabled);
 // Draw a filled bar (e.g. HP bar)
 void ui_bar(int x, int y, int w, int h, int cur, int max, Color fill, Color bg);
 
+// Draw a filled bar using a float display value (for animated lerp)
+void ui_bar_f(int x, int y, int w, int h, float cur, int max, Color fill, Color bg);
+
 // Draw a panel (filled rounded rect + border)
 void ui_panel(Rectangle r, Color fill, Color border);
 

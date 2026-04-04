@@ -61,7 +61,7 @@ void player_init(Player *p, const char *name, PlayerClass pc)
 
 static int equip_bonus(EquipSlot slot, int field)
 {
-    int id = g_player.equip[slot];
+    int id = g_ctx.player.equip[slot];
     if (id < 0 || id >= g_items_count) return 0;
     const ItemDef *it = &g_items[id];
     switch (field) {
@@ -84,25 +84,25 @@ static int total_equip_bonus(int field)
 
 int player_effective_life(void)
 {
-    return g_player.base.max_life + total_equip_bonus(0);
+    return g_ctx.player.base.max_life + total_equip_bonus(0);
 }
 int player_effective_mana(void)
 {
-    return g_player.base.max_mana + total_equip_bonus(1);
+    return g_ctx.player.base.max_mana + total_equip_bonus(1);
 }
 int player_effective_str(void)
 {
-    int v = g_player.base.strength + total_equip_bonus(2) + g_combat.str_bonus;
+    int v = g_ctx.player.base.strength + total_equip_bonus(2) + g_ctx.combat.str_bonus;
     return MAX(1, v);
 }
 int player_effective_spd(void)
 {
-    int v = g_player.base.speed + total_equip_bonus(3) + g_combat.spd_bonus;
+    int v = g_ctx.player.base.speed + total_equip_bonus(3) + g_ctx.combat.spd_bonus;
     return MAX(1, v);
 }
 int player_effective_def(void)
 {
-    int v = g_player.base.defense + total_equip_bonus(4) + g_combat.def_bonus;
+    int v = g_ctx.player.base.defense + total_equip_bonus(4) + g_ctx.combat.def_bonus;
     return MAX(0, v);
 }
 
@@ -200,8 +200,6 @@ bool player_use_consumable(Player *p, int item_id)
     if (!player_remove_item(p, item_id)) return false;
 
     extern const int g_consume_effect_count;
-    typedef struct { int life; int mana; } ConsumeEffect;
-    extern const ConsumeEffect g_consume_effect[];
 
     if (item_id < g_consume_effect_count) {
         p->current_life = MIN(p->current_life + g_consume_effect[item_id].life,
