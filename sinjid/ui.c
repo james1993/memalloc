@@ -4,26 +4,72 @@
 #include "player.h"
 #include "hub.h"
 #include "data.h"
+#include "anim.h"
+#include "audio.h"
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
-/* ── palette ── */
+/* ── Font ── */
+static Font g_font;
+static bool g_font_loaded = false;
 
-static const Color C_PANEL    = {  28,  28,  45, 255 };
-static const Color C_BORDER   = {  70,  70, 120, 255 };
-static const Color C_GOLD     = { 220, 180,  40, 255 };
-static const Color C_WHITE    = { 230, 230, 230, 255 };
-static const Color C_DIM      = { 100, 100, 130, 255 };
-static const Color C_BTN      = {  45,  45,  80, 255 };
-static const Color C_BTN_HOV  = {  70,  70, 130, 255 };
-static const Color C_BTN_DIS  = {  30,  30,  45, 255 };
-static const Color C_HP       = { 200,  40,  40, 255 };
-static const Color C_MP       = {  40,  80, 200, 255 };
-static const Color C_XP       = {  40, 180,  80, 255 };
-static const Color C_GREEN    = {  60, 200,  60, 255 };
-static const Color C_RED      = { 220,  60,  60, 255 };
+void ui_init(void)
+{
+    const char *ttf = "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf";
+    if (FileExists(ttf)) {
+        g_font = LoadFontEx(ttf, 20, NULL, 0);
+        g_font_loaded = true;
+    }
+}
 
-/* ── helpers ── */
+void ui_close(void)
+{
+    if (g_font_loaded) UnloadFont(g_font);
+}
+
+/* Draw text using loaded font, falling back to default */
+static void txt(int x, int y, int size, Color col, const char *s)
+{
+    if (g_font_loaded)
+        DrawTextEx(g_font, s, (Vector2){(float)x,(float)y},
+                   (float)size, 1.0f, col);
+    else
+        DrawText(s, x, y, size, col);
+}
+
+static int txt_w(const char *s, int size)
+{
+    if (g_font_loaded)
+        return (int)MeasureTextEx(g_font, s, (float)size, 1.0f).x;
+    return MeasureText(s, size);
+}
+
+/* Centered text in a rect */
+static void txt_c(Rectangle r, int size, Color col, const char *s)
+{
+    int tw = txt_w(s, size);
+    int tx = (int)(r.x + (r.width  - tw)   / 2);
+    int ty = (int)(r.y + (r.height - size)  / 2);
+    txt(tx, ty, size, col, s);
+}
+
+/* ── Palette ── */
+static const Color C_PANEL   = {  28,  28,  45, 255 };
+static const Color C_BORDER  = {  70,  70, 120, 255 };
+static const Color C_GOLD    = { 220, 180,  40, 255 };
+static const Color C_WHITE   = { 230, 230, 230, 255 };
+static const Color C_DIM     = { 100, 100, 130, 255 };
+static const Color C_BTN     = {  45,  45,  80, 255 };
+static const Color C_BTN_HOV = {  70,  70, 130, 255 };
+static const Color C_BTN_DIS = {  30,  30,  45, 255 };
+static const Color C_HP      = { 200,  40,  40, 255 };
+static const Color C_MP      = {  40,  80, 200, 255 };
+static const Color C_XP      = {  40, 180,  80, 255 };
+static const Color C_GREEN   = {  60, 200,  60, 255 };
+static const Color C_RED     = { 220,  60,  60, 255 };
+
+/* ── Helpers ── */
 void ui_panel(Rectangle r, Color fill, Color border)
 {
     DrawRectangleRec(r, fill);
@@ -36,18 +82,30 @@ void ui_bar(int x, int y, int w, int h, int cur, int max, Color fill, Color bg)
     if (max > 0) {
         int filled = (int)((float)cur / (float)max * w);
         if (filled > w) filled = w;
-        DrawRectangle(x, y, filled, h, fill);
+        if (filled > 0) DrawRectangle(x, y, filled, h, fill);
+    }
+    DrawRectangleLines(x, y, w, h, C_BORDER);
+}
+
+/* Animated bar: uses float display value */
+static void ui_bar_f(int x, int y, int w, int h,
+                     float cur, int max, Color fill, Color bg)
+{
+    DrawRectangle(x, y, w, h, bg);
+    if (max > 0 && cur > 0) {
+        int filled = (int)(cur / (float)max * w);
+        if (filled > w) filled = w;
+        if (filled > 0) DrawRectangle(x, y, filled, h, fill);
     }
     DrawRectangleLines(x, y, w, h, C_BORDER);
 }
 
 void ui_text_center(Rectangle r, const char *text, int font_size, Color col)
 {
-    int tw = MeasureText(text, font_size);
-    int tx = (int)(r.x + (r.width  - tw) / 2);
-    int ty = (int)(r.y + (r.height - font_size) / 2);
-    DrawText(text, tx, ty, font_size, col);
+    txt_c(r, font_size, col, text);
 }
+
+/* Button: returns true on click. Plays sounds on hover/click. */
 
 bool ui_button(Rectangle r, const char *label, bool enabled)
 {
@@ -56,11 +114,22 @@ bool ui_button(Rectangle r, const char *label, bool enabled)
     Color bg      = !enabled ? C_BTN_DIS : (hovered ? C_BTN_HOV : C_BTN);
     Color tc      = !enabled ? C_DIM     : C_WHITE;
     ui_panel(r, bg, C_BORDER);
-    ui_text_center(r, label, 18, tc);
-    return hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+    txt_c(r, 18, tc, label);
+
+    static Rectangle last_hovered = {0};
+    if (hovered && (last_hovered.x != r.x || last_hovered.y != r.y)) {
+        snd_hover();
+        last_hovered = r;
+    }
+    if (!hovered && last_hovered.x == r.x && last_hovered.y == r.y)
+        last_hovered = (Rectangle){0};
+
+    bool clicked = hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+    if (clicked) snd_click();
+    return clicked;
 }
 
-/* ── name-input state (class select) ── */
+/* ── Name-input state ── */
 static char s_name_buf[32] = "Hero";
 static int  s_name_len     = 4;
 static bool s_naming       = false;
@@ -70,33 +139,30 @@ static PlayerClass s_chosen_class = CLASS_WARRIOR;
 void ui_draw_title(void)
 {
     int cx = SCREEN_W / 2;
-    DrawText("SINJID",
-        cx - MeasureText("SINJID", 72) / 2, 160, 72, C_GOLD);
-    DrawText("Shadow of the Warrior",
-        cx - MeasureText("Shadow of the Warrior", 28) / 2, 248, 28, C_WHITE);
-    DrawText("A fan-made simplified clone",
-        cx - MeasureText("A fan-made simplified clone", 18) / 2, 290, 18, C_DIM);
+    txt(cx - txt_w("SINJID", 72)/2, 160, 72, C_GOLD, "SINJID");
+    txt(cx - txt_w("Shadow of the Warrior", 28)/2, 248, 28, C_WHITE, "Shadow of the Warrior");
+    txt(cx - txt_w("A fan-made simplified clone", 18)/2, 290, 18, C_DIM, "A fan-made simplified clone");
 
     Rectangle btn = { cx - 120, 400, 240, 50 };
     if (ui_button(btn, "Begin Your Journey", true))
-        g_scene = SCENE_CLASS_SELECT;
+        anim_fade_to(SCENE_CLASS_SELECT);
 
-    DrawText("ESC to quit | F1 debug overlay",
-        cx - MeasureText("ESC to quit | F1 debug overlay", 16) / 2,
-        SCREEN_H - 40, 16, C_DIM);
+    txt(cx - txt_w("ESC to quit | F1 debug overlay", 16)/2,
+        SCREEN_H - 40, 16, C_DIM, "ESC to quit | F1 debug overlay");
 }
 
 /* ── CLASS SELECT ── */
 void ui_draw_class_select(void)
 {
     int cx = SCREEN_W / 2;
-    DrawText("Choose Your Class",
-        cx - MeasureText("Choose Your Class", 32) / 2, 40, 32, C_GOLD);
+    txt(cx - txt_w("Choose Your Class", 32)/2, 40, 32, C_GOLD, "Choose Your Class");
 
-    static const struct { PlayerClass pc; const char *name; const char *desc; Color col; } classes[] = {
-        { CLASS_WARRIOR, "Warrior", "High strength & defense.\nPowerful melee skills.", (Color){180,80,80,255} },
-        { CLASS_ROGUE,   "Rogue",   "High speed & agility.\nPoison and multi-hit skills.", (Color){80,180,80,255} },
-        { CLASS_MAGE,    "Mage",    "High mana & magic.\nDevastating spell skills.", (Color){80,80,200,255} },
+    static const struct {
+        PlayerClass pc; const char *name; const char *desc; Color col;
+    } classes[] = {
+        { CLASS_WARRIOR, "Warrior", "High STR & DEF. Buffs and stuns.", (Color){180,80,80,255} },
+        { CLASS_ROGUE,   "Rogue",   "High SPD. Poison, dodge, multi-hit.", (Color){80,180,80,255} },
+        { CLASS_MAGE,    "Mage",    "High mana. Devastating spells.", (Color){80,80,200,255} },
     };
 
     if (!s_naming) {
@@ -105,47 +171,41 @@ void ui_draw_class_select(void)
             bool sel = (s_chosen_class == classes[i].pc);
             ui_panel(box, sel ? (Color){40,40,80,255} : C_PANEL,
                      sel ? C_GOLD : C_BORDER);
-            /* class colour swatch */
             DrawRectangle((int)box.x + 10, (int)box.y + 10, 40, 40, classes[i].col);
-            DrawText(classes[i].name, (int)box.x + 60, (int)box.y + 18, 24, C_WHITE);
+            txt((int)box.x + 60, (int)box.y + 18, 22, C_WHITE, classes[i].name);
 
             Stats st = class_base_stats(classes[i].pc);
-            DrawText(TextFormat("Life:  %d", st.max_life),  (int)box.x+14, (int)box.y+70,  16, C_HP);
-            DrawText(TextFormat("Mana:  %d", st.max_mana),  (int)box.x+14, (int)box.y+90,  16, C_MP);
-            DrawText(TextFormat("STR:   %d", st.strength),  (int)box.x+14, (int)box.y+110, 16, C_WHITE);
-            DrawText(TextFormat("SPD:   %d", st.speed),     (int)box.x+14, (int)box.y+130, 16, C_WHITE);
-            DrawText(TextFormat("DEF:   %d", st.defense),   (int)box.x+14, (int)box.y+150, 16, C_WHITE);
+            txt((int)box.x+14, (int)box.y+70,  16, C_HP,    TextFormat("Life:  %d", st.max_life));
+            txt((int)box.x+14, (int)box.y+90,  16, C_MP,    TextFormat("Mana:  %d", st.max_mana));
+            txt((int)box.x+14, (int)box.y+110, 16, C_WHITE, TextFormat("STR:   %d", st.strength));
+            txt((int)box.x+14, (int)box.y+130, 16, C_WHITE, TextFormat("SPD:   %d", st.speed));
+            txt((int)box.x+14, (int)box.y+150, 16, C_WHITE, TextFormat("DEF:   %d", st.defense));
 
             Vector2 m = GetMousePosition();
-            if (CheckCollisionPointRec(m, box) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+            if (CheckCollisionPointRec(m, box) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 s_chosen_class = classes[i].pc;
+                snd_click();
+            }
         }
 
-        DrawText("Warrior: tanky melee fighter with buffs and stuns",       80, 340, 16, C_DIM);
-        DrawText("Rogue:   fast striker with poison, dodge, and multi-hit", 80, 360, 16, C_DIM);
-        DrawText("Mage:    fragile caster with high-damage spells and heal",80, 380, 16, C_DIM);
+        txt(80, 340, 15, C_DIM, "Warrior: tanky melee fighter with buffs and stuns");
+        txt(80, 360, 15, C_DIM, "Rogue:   fast striker with poison, dodge, and multi-hit");
+        txt(80, 380, 15, C_DIM, "Mage:    fragile caster with high-damage spells and heal");
 
         Rectangle next = { cx - 100, 440, 200, 48 };
-        if (ui_button(next, "Choose Name ->", true))
-            s_naming = true;
+        if (ui_button(next, "Choose Name ->", true)) s_naming = true;
 
         Rectangle back = { cx - 100, 500, 200, 40 };
-        if (ui_button(back, "<- Back", true))
-            g_scene = SCENE_TITLE;
+        if (ui_button(back, "<- Back", true)) anim_fade_to(SCENE_TITLE);
     } else {
-        /* Name entry */
-        DrawText("Enter your name:",
-            cx - MeasureText("Enter your name:", 24) / 2, 200, 24, C_WHITE);
-
+        txt(cx - txt_w("Enter your name:", 24)/2, 200, 24, C_WHITE, "Enter your name:");
         Rectangle nbox = { cx - 160, 250, 320, 48 };
         ui_panel(nbox, C_PANEL, C_GOLD);
-        DrawText(s_name_buf, (int)nbox.x + 12, (int)nbox.y + 14, 24, C_WHITE);
-        /* blinking cursor */
+        txt((int)nbox.x + 12, (int)nbox.y + 14, 22, C_WHITE, s_name_buf);
         if (((int)(GetTime() * 2)) % 2 == 0)
-            DrawText("_", (int)nbox.x + 12 + MeasureText(s_name_buf, 24),
-                     (int)nbox.y + 14, 24, C_GOLD);
+            txt((int)nbox.x + 12 + txt_w(s_name_buf, 22),
+                (int)nbox.y + 14, 22, C_GOLD, "_");
 
-        /* character input */
         int ch;
         while ((ch = GetCharPressed()) != 0) {
             if (ch >= 32 && s_name_len < 30) {
@@ -153,31 +213,28 @@ void ui_draw_class_select(void)
                 s_name_buf[s_name_len]   = '\0';
             }
         }
-        if (IsKeyPressed(KEY_BACKSPACE) && s_name_len > 0) {
+        if (IsKeyPressed(KEY_BACKSPACE) && s_name_len > 0)
             s_name_buf[--s_name_len] = '\0';
-        }
 
-        Rectangle start = { cx - 100, 340, 200, 48 };
         bool name_ok = s_name_len > 0;
+        Rectangle start = { cx - 100, 340, 200, 48 };
         if (ui_button(start, "Start Game!", name_ok) && name_ok) {
             player_init(&g_player, s_name_buf, s_chosen_class);
-            g_scene  = SCENE_HUB;
+            anim_combat_reset();
             s_naming = false;
+            anim_fade_to(SCENE_HUB);
         }
         Rectangle back2 = { cx - 100, 400, 200, 40 };
-        if (ui_button(back2, "<- Back", true))
-            s_naming = false;
+        if (ui_button(back2, "<- Back", true)) s_naming = false;
     }
 }
 
 /* ── HUB ── */
 void ui_draw_hub(void)
 {
-    /* Left panel: locations */
     Rectangle left = { 20, 20, 420, SCREEN_H - 40 };
     ui_panel(left, C_PANEL, C_BORDER);
-    DrawText("Shadow Temple", 36, 34, 24, C_GOLD);
-    DrawText("_________________________________", 36, 60, 16, C_BORDER);
+    txt(36, 34, 24, C_GOLD, "Shadow Temple");
 
     static const HubLocation locs[] = {
         HUB_GW_HUMAN, HUB_GW_MONSTER, HUB_GW_DARK,
@@ -185,88 +242,77 @@ void ui_draw_hub(void)
         HUB_SHOP_BASIC, HUB_SHOP_MID, HUB_SHOP_ADV,
         HUB_SKILLS, HUB_INVENTORY
     };
-    static const int LOC_COUNT = 9;
-
-    for (int i = 0; i < LOC_COUNT; i++) {
+    for (int i = 0; i < 9; i++) {
         HubLocation loc = locs[i];
         bool unlocked   = hub_location_unlocked(loc);
         Rectangle btn   = { 36, 80 + i * 60, 388, 48 };
-        const char *lbl = hub_location_name(loc);
         char buf[64];
-        if (!unlocked) snprintf(buf, sizeof(buf), "[LOCKED] %s", lbl);
-        else           snprintf(buf, sizeof(buf), "%s", lbl);
-        if (ui_button(btn, buf, unlocked))
-            hub_enter(loc);
+        if (!unlocked) snprintf(buf, sizeof(buf), "[LOCKED] %s", hub_location_name(loc));
+        else           snprintf(buf, sizeof(buf), "%s", hub_location_name(loc));
+        if (ui_button(btn, buf, unlocked)) hub_enter(loc);
     }
 
-    /* Right panel: player stats */
     Rectangle right = { 460, 20, SCREEN_W - 480, SCREEN_H - 40 };
     ui_panel(right, C_PANEL, C_BORDER);
 
     int rx = 474, ry = 34;
-    DrawText(TextFormat("%s the %s", g_player.name, class_name(g_player.pc)),
-        rx, ry, 22, C_GOLD);
-    DrawText(TextFormat("Level %d", g_player.level), rx, ry + 30, 18, C_WHITE);
-    DrawText(TextFormat("Gold: %d", g_player.gold),  rx, ry + 52, 18, C_GOLD);
+    txt(rx, ry,      22, C_GOLD,  TextFormat("%s the %s", g_player.name, class_name(g_player.pc)));
+    txt(rx, ry + 30, 18, C_WHITE, TextFormat("Level %d", g_player.level));
+    txt(rx, ry + 52, 18, C_GOLD,  TextFormat("Gold: %d", g_player.gold));
 
-    /* XP bar */
-    DrawText("XP:", rx, ry + 80, 16, C_DIM);
-    ui_bar(rx + 30, ry + 80, 200, 14,
+    txt(rx, ry + 80, 15, C_DIM, "XP:");
+    ui_bar(rx + 28, ry + 80, 200, 13,
            g_player.xp, g_player.xp_to_next, C_XP, C_BTN);
-    DrawText(TextFormat("%d / %d", g_player.xp, g_player.xp_to_next),
-        rx + 235, ry + 80, 14, C_DIM);
+    txt(rx + 232, ry + 80, 13, C_DIM,
+        TextFormat("%d / %d", g_player.xp, g_player.xp_to_next));
 
-    /* HP/MP bars */
     int max_life = player_effective_life();
     int max_mana = player_effective_mana();
-    DrawText("HP:", rx, ry + 106, 16, C_DIM);
-    ui_bar(rx + 30, ry + 106, 200, 14,
+    txt(rx, ry + 102, 15, C_DIM, "HP:");
+    ui_bar(rx + 28, ry + 102, 200, 13,
            g_player.current_life, max_life, C_HP, C_BTN);
-    DrawText(TextFormat("%d/%d", g_player.current_life, max_life),
-        rx + 235, ry + 106, 14, C_DIM);
+    txt(rx + 232, ry + 102, 13, C_DIM,
+        TextFormat("%d/%d", g_player.current_life, max_life));
 
-    DrawText("MP:", rx, ry + 128, 16, C_DIM);
-    ui_bar(rx + 30, ry + 128, 200, 14,
+    txt(rx, ry + 122, 15, C_DIM, "MP:");
+    ui_bar(rx + 28, ry + 122, 200, 13,
            g_player.current_mana, max_mana, C_MP, C_BTN);
-    DrawText(TextFormat("%d/%d", g_player.current_mana, max_mana),
-        rx + 235, ry + 128, 14, C_DIM);
+    txt(rx + 232, ry + 122, 13, C_DIM,
+        TextFormat("%d/%d", g_player.current_mana, max_mana));
 
-    /* Stats */
-    DrawText("── Stats ──────────────", rx, ry + 160, 16, C_BORDER);
-    DrawText(TextFormat("Strength:  %d", player_effective_str()), rx, ry+182, 16, C_WHITE);
-    DrawText(TextFormat("Speed:     %d", player_effective_spd()), rx, ry+202, 16, C_WHITE);
-    DrawText(TextFormat("Defense:   %d", player_effective_def()), rx, ry+222, 16, C_WHITE);
+    txt(rx, ry + 150, 15, C_DIM, "-- Stats --");
+    txt(rx, ry + 170, 16, C_WHITE, TextFormat("Strength:  %d", player_effective_str()));
+    txt(rx, ry + 190, 16, C_WHITE, TextFormat("Speed:     %d", player_effective_spd()));
+    txt(rx, ry + 210, 16, C_WHITE, TextFormat("Defense:   %d", player_effective_def()));
 
-    /* Equipment */
-    DrawText("── Equipment ──────────", rx, ry + 256, 16, C_BORDER);
+    txt(rx, ry + 242, 15, C_DIM, "-- Equipment --");
     static const char *slot_names[] = { "Weapon", "Armor ", "Access" };
     for (int s = 0; s < EQUIP_SLOT_COUNT; s++) {
         int eid = g_player.equip[s];
-        const char *iname = (eid >= 0) ? g_items[eid].name : "(none)";
-        DrawText(TextFormat("%s: %s", slot_names[s], iname),
-            rx, ry + 278 + s * 22, 16, (eid >= 0) ? C_WHITE : C_DIM);
+        txt(rx, ry + 262 + s * 22, 15,
+            (eid >= 0) ? C_WHITE : C_DIM,
+            TextFormat("%s: %s", slot_names[s],
+                       (eid >= 0) ? g_items[eid].name : "(none)"));
     }
 
-    /* Gateway progress */
-    DrawText("── Gateways ───────────", rx, ry + 360, 16, C_BORDER);
+    txt(rx, ry + 344, 15, C_DIM, "-- Gateways --");
     static const char *gw_names[] = { "Human Gateway", "Monster Portal", "Dark Rift" };
     for (int g = 0; g < NUM_GATEWAYS; g++) {
         int  prog = g_player.gw_progress[g];
         bool comp = g_player.gw_complete[g];
         Color gc  = comp ? C_GREEN : (prog > 0 ? C_GOLD : C_DIM);
-        DrawText(TextFormat("%s: %s%d/%d",
-            gw_names[g], comp ? "COMPLETE " : "", prog, GATEWAY_DEPTH),
-            rx, ry + 382 + g * 22, 15, gc);
+        txt(rx, ry + 364 + g * 22, 15, gc,
+            TextFormat("%s: %s%d/%d", gw_names[g],
+                       comp ? "COMPLETE " : "", prog, GATEWAY_DEPTH));
     }
 
-    /* Pending level-up hint */
     if (g_player.stat_points > 0 || g_player.skill_points > 0) {
-        DrawText(TextFormat("! Level-up points available (%d stat, %d skill)",
-            g_player.stat_points, g_player.skill_points),
-            rx, ry + 455, 16, C_GOLD);
-        Rectangle lub = { (float)rx, (float)(ry + 478), 220, 38 };
+        txt(rx, ry + 440, 15, C_GOLD,
+            TextFormat("! Points available (%d stat, %d skill)",
+                g_player.stat_points, g_player.skill_points));
+        Rectangle lub = { (float)rx, (float)(ry + 462), 220, 38 };
         if (ui_button(lub, "Allocate Points", true))
-            g_scene = SCENE_LEVEL_UP;
+            anim_fade_to(SCENE_LEVEL_UP);
     }
 }
 
@@ -274,32 +320,41 @@ void ui_draw_hub(void)
 static bool s_show_skills = false;
 static bool s_show_items  = false;
 
-/* draw a combatant card */
+/* Draw combatant card with idle bob and hit flash */
 static void draw_combatant(int x, int y, int w, const char *name,
-    int cur_life, int max_life, int cur_mana, int max_mana,
-    Color body_col, StatusFlags status)
+    float disp_life, float disp_mana, int max_life, int max_mana,
+    Color body_col, StatusFlags status, float bob_t, float flash, bool heal_flash)
 {
-    /* body rectangle */
+    int bob = (int)anim_bob_y(bob_t);
+    y += bob;
+
     DrawRectangle(x, y, w, 120, body_col);
     DrawRectangleLinesEx((Rectangle){(float)x,(float)y,(float)w,120}, 2, C_BORDER);
-    /* name */
-    DrawText(name, x + 8, y + 8, 20, C_WHITE);
-    /* HP bar */
-    DrawText("HP", x + 8, y + 38, 14, C_DIM);
-    ui_bar(x + 34, y + 38, w - 44, 14, cur_life, max_life, C_HP, C_BTN);
-    DrawText(TextFormat("%d/%d", cur_life, max_life), x + 8, y + 56, 13, C_DIM);
-    /* MP bar */
-    DrawText("MP", x + 8, y + 74, 14, C_DIM);
-    ui_bar(x + 34, y + 74, w - 44, 14, cur_mana, max_mana, C_MP, C_BTN);
-    DrawText(TextFormat("%d/%d", cur_mana, max_mana), x + 8, y + 92, 13, C_DIM);
-    /* status icons */
+
+    /* Hit flash overlay */
+    if (flash > 0.0f) {
+        Color fc = heal_flash ? (Color){60,220,60,255} : (Color){255,255,255,255};
+        fc.a = (unsigned char)(flash * 180);
+        DrawRectangle(x, y, w, 120, fc);
+    }
+
+    txt(x + 8, y + 8, 20, C_WHITE, name);
+
+    txt(x + 8, y + 38, 13, C_DIM, "HP");
+    ui_bar_f(x + 30, y + 38, w - 40, 13, disp_life, max_life, C_HP, C_BTN);
+    txt(x + 8, y + 55, 12, C_DIM, TextFormat("%d/%d", (int)disp_life, max_life));
+
+    txt(x + 8, y + 72, 13, C_DIM, "MP");
+    ui_bar_f(x + 30, y + 72, w - 40, 13, disp_mana, max_mana, C_MP, C_BTN);
+    txt(x + 8, y + 89, 12, C_DIM, TextFormat("%d/%d", (int)disp_mana, max_mana));
+
     int sx = x + 8, sy = y + 108;
-    if (status & STATUS_POISONED)  { DrawText("PSN", sx, sy, 12, C_GREEN);    sx += 30; }
-    if (status & STATUS_STUNNED)   { DrawText("STN", sx, sy, 12, C_GOLD);     sx += 30; }
-    if (status & STATUS_SLOWED)    { DrawText("SLW", sx, sy, 12, C_MP);       sx += 30; }
-    if (status & STATUS_POWERED)   { DrawText("PWR", sx, sy, 12, C_RED);      sx += 30; }
-    if (status & STATUS_SHIELDED)  { DrawText("SHD", sx, sy, 12, C_WHITE);    sx += 30; }
-    if (status & STATUS_DODGING)   { DrawText("DDG", sx, sy, 12, C_XP);       sx += 30; }
+    if (status & STATUS_POISONED) { txt(sx, sy, 11, C_GREEN, "PSN"); sx += 28; }
+    if (status & STATUS_STUNNED)  { txt(sx, sy, 11, C_GOLD,  "STN"); sx += 28; }
+    if (status & STATUS_SLOWED)   { txt(sx, sy, 11, C_MP,    "SLW"); sx += 28; }
+    if (status & STATUS_POWERED)  { txt(sx, sy, 11, C_RED,   "PWR"); sx += 28; }
+    if (status & STATUS_SHIELDED) { txt(sx, sy, 11, C_WHITE, "SHD"); sx += 28; }
+    if (status & STATUS_DODGING)  { txt(sx, sy, 11, C_XP,    "DDG"); sx += 28; }
     (void)sx;
 }
 
@@ -307,72 +362,90 @@ void ui_draw_combat(void)
 {
     CombatState *cs = &g_combat;
 
-    /* Auto-advance enemy turn */
+    /* Auto-advance enemy turn with a brief delay so log is readable */
     if (!cs->player_turn && !cs->combat_over) {
-        combat_enemy_turn();
+        static float enemy_delay = 0.6f;
+        enemy_delay -= GetFrameTime();
+        if (enemy_delay <= 0.0f) {
+            int prev_life = g_player.current_life;
+            combat_enemy_turn();
+            if (g_player.current_life < prev_life) {
+                anim_player_hit(false);
+                snd_hit();
+            }
+            enemy_delay = 0.6f;
+        }
     }
 
-    /* ── combatant cards ── */
+    /* Combatant cards */
     draw_combatant(30, 30, 300, g_player.name,
-        g_player.current_life, player_effective_life(),
-        g_player.current_mana, player_effective_mana(),
-        (Color){40,60,120,255}, g_player.status);
+        g_canim.player_life, g_canim.player_mana,
+        player_effective_life(), player_effective_mana(),
+        (Color){40,60,120,255}, g_player.status,
+        g_canim.player_bob_t, g_canim.player_flash, g_canim.player_flash_col);
 
     draw_combatant(SCREEN_W - 330, 30, 300, cs->enemy.name,
-        cs->enemy.current_life, cs->enemy.base_stats.max_life,
-        cs->enemy.current_mana, cs->enemy.base_stats.max_mana,
-        cs->enemy.color, cs->enemy.status);
+        g_canim.enemy_life, g_canim.enemy_mana,
+        cs->enemy.base_stats.max_life, cs->enemy.base_stats.max_mana,
+        cs->enemy.color, cs->enemy.status,
+        g_canim.enemy_bob_t, g_canim.enemy_flash, g_canim.enemy_flash_col);
 
-    /* turn indicator */
     const char *turn_txt = cs->combat_over ? "" :
-        (cs->player_turn ? ">> Your turn <<" : "Enemy thinking...");
-    DrawText(turn_txt,
-        SCREEN_W/2 - MeasureText(turn_txt, 20)/2, 60, 20, C_GOLD);
+        (cs->player_turn ? ">> Your turn <<" : "Enemy acting...");
+    txt(SCREEN_W/2 - txt_w(turn_txt, 20)/2, 60, 20, C_GOLD, turn_txt);
 
-    /* ── combat log ── */
+    /* Combat log */
     Rectangle log_box = { 340, 20, SCREEN_W - 680, 380 };
     ui_panel(log_box, C_PANEL, C_BORDER);
-    DrawText("Combat Log", (int)log_box.x + 8, (int)log_box.y + 6, 14, C_DIM);
-    int visible = cs->log_count;
-    if (visible > 7) visible = 7;
+    txt((int)log_box.x + 8, (int)log_box.y + 6, 13, C_DIM, "Combat Log");
+    int visible = cs->log_count < 7 ? cs->log_count : 7;
     for (int i = 0; i < visible; i++) {
         int li = cs->log_count - visible + i;
-        DrawText(cs->log[li],
-            (int)log_box.x + 8,
-            (int)log_box.y + 26 + i * 48,
-            16, (i == visible - 1) ? C_WHITE : C_DIM);
+        txt((int)log_box.x + 8,
+            (int)log_box.y + 26 + i * 50,
+            15, (i == visible - 1) ? C_WHITE : C_DIM,
+            cs->log[li]);
     }
 
-    /* ── action bar (only when player's turn) ── */
+    /* Action bar */
     if (cs->player_turn && !cs->combat_over) {
         int by = 430;
-
         if (!s_show_skills && !s_show_items) {
             Rectangle ra = {  30, (float)by, 180, 48 };
             Rectangle rs = { 220, (float)by, 180, 48 };
             Rectangle ri = { 410, (float)by, 180, 48 };
             Rectangle rf = { 600, (float)by, 180, 48 };
 
-            if (ui_button(ra, "Attack",  true))  { s_show_skills = false; s_show_items = false; combat_action_attack(); }
-            if (ui_button(rs, "Skills",  true))  { s_show_skills = true;  s_show_items = false; }
-            if (ui_button(ri, "Items",   true))  { s_show_items  = true;  s_show_skills = false; }
-            if (ui_button(rf, "Flee",    true))  { combat_action_flee(); }
+            if (ui_button(ra, "Attack", true)) {
+                int prev = cs->enemy.current_life;
+                combat_action_attack();
+                if (cs->enemy.current_life < prev) {
+                    anim_enemy_hit(false); snd_hit();
+                }
+                s_show_skills = false; s_show_items = false;
+            }
+            if (ui_button(rs, "Skills", true)) { s_show_skills = true; s_show_items = false; }
+            if (ui_button(ri, "Items",  true)) { s_show_items  = true; s_show_skills = false; }
+            if (ui_button(rf, "Flee",   true)) { combat_action_flee(); }
         }
 
-        /* skill submenu */
         if (s_show_skills) {
-            DrawText("Choose a skill:", 30, (float)by - 24, 18, C_GOLD);
+            txt(30, (float)(by - 26), 17, C_GOLD, "Choose a skill:");
             const SkillDef *skills = skills_for_class(g_player.pc);
             for (int i = 0; i < MAX_SKILLS; i++) {
                 const SkillDef *sk = &skills[i];
                 int slvl = g_player.skill_level[i];
                 int cost = sk->mana_cost + (slvl - 1) * 2;
                 bool can = (g_player.current_mana >= cost);
-                char lbl[64];
+                char lbl[80];
                 snprintf(lbl, sizeof(lbl), "%s (Lv%d) [%dMP]", sk->name, slvl, cost);
                 Rectangle sb = { 30, (float)(by + i * 56), 600, 48 };
                 if (ui_button(sb, lbl, can)) {
+                    int prev_e = cs->enemy.current_life;
+                    int prev_p = g_player.current_life;
                     combat_action_skill(i);
+                    if (cs->enemy.current_life < prev_e) { anim_enemy_hit(false); snd_skill(); }
+                    if (g_player.current_life > prev_p)  { anim_player_hit(true);  }
                     s_show_skills = false;
                 }
             }
@@ -380,9 +453,8 @@ void ui_draw_combat(void)
             if (ui_button(cancel, "Cancel", true)) s_show_skills = false;
         }
 
-        /* items submenu */
         if (s_show_items) {
-            DrawText("Use an item:", 30, (float)by - 24, 18, C_GOLD);
+            txt(30, (float)(by - 26), 17, C_GOLD, "Use an item:");
             int shown = 0;
             for (int i = 0; i < MAX_INVENTORY && shown < 6; i++) {
                 int id = g_player.bag_ids[i];
@@ -391,60 +463,67 @@ void ui_draw_combat(void)
                 snprintf(lbl, sizeof(lbl), "%s x%d", g_items[id].name, g_player.bag_qty[i]);
                 Rectangle ib = { 30, (float)(by + shown * 56), 400, 48 };
                 if (ui_button(ib, lbl, true)) {
+                    int prev = g_player.current_life;
                     combat_action_use_item(id);
+                    if (g_player.current_life > prev) anim_player_hit(true);
                     s_show_items = false;
                 }
                 shown++;
             }
-            if (shown == 0)
-                DrawText("No consumables in bag.", 30, (float)by, 18, C_DIM);
+            if (shown == 0) txt(30, (float)by, 17, C_DIM, "No consumables.");
             Rectangle cancel2 = { 450, (float)by, 140, 48 };
             if (ui_button(cancel2, "Cancel", true)) s_show_items = false;
         }
     }
 
-    /* ── combat over overlay ── */
+    /* Combat over overlay */
     if (cs->combat_over) {
-        s_show_skills = false;
-        s_show_items  = false;
-
+        s_show_skills = false; s_show_items = false;
         Rectangle overlay = { 300, 280, 424, 220 };
         ui_panel(overlay, (Color){10,10,20,230}, cs->player_won ? C_XP : C_RED);
 
         if (cs->fled) {
-            ui_text_center((Rectangle){300,300,424,40}, "You fled the battle!", 24, C_GOLD);
+            txt_c((Rectangle){300,300,424,40}, 22, C_GOLD, "You fled the battle!");
             Rectangle rb = { 380, 400, 260, 50 };
             if (ui_button(rb, "Return to Temple", true)) {
-                g_scene = SCENE_HUB;
+                g_scene_dirty = true;
+                anim_fade_to(SCENE_HUB);
             }
         } else if (cs->player_won) {
-            ui_text_center((Rectangle){300,300,424,40}, "Victory!", 30, C_XP);
-            DrawText(TextFormat("+%d XP   +%d Gold",
-                cs->enemy.xp_reward, cs->enemy.gold_reward),
-                340, 348, 18, C_GOLD);
+            txt_c((Rectangle){300,300,424,40}, 28, C_XP, "Victory!");
+            txt(340, 346, 17, C_GOLD,
+                TextFormat("+%d XP   +%d Gold",
+                    cs->enemy.xp_reward, cs->enemy.gold_reward));
             if (g_player.gw_complete[cs->gateway])
-                DrawText("Gateway Complete!", 340, 374, 20, C_GREEN);
+                txt(340, 372, 19, C_GREEN, "Gateway Complete!");
 
-            Rectangle rb = { 380, 420, 260, 50 };
+            Rectangle rb = { 380, 418, 260, 50 };
             if (ui_button(rb, "Continue", true)) {
                 player_rest(&g_player);
-                if (g_player.stat_points > 0 || g_player.skill_points > 0)
-                    g_scene = SCENE_LEVEL_UP;
-                else if (g_player.gw_complete[GW_DARK_RIFT])
-                    g_scene = SCENE_VICTORY;
-                else
-                    g_scene = SCENE_HUB;
+                g_scene_dirty = true;
+                if (g_player.stat_points > 0 || g_player.skill_points > 0) {
+                    snd_level_up();
+                    anim_fade_to(SCENE_LEVEL_UP);
+                } else if (g_player.gw_complete[GW_DARK_RIFT]) {
+                    snd_victory();
+                    anim_fade_to(SCENE_VICTORY);
+                } else {
+                    anim_fade_to(SCENE_HUB);
+                }
             }
         } else {
-            ui_text_center((Rectangle){300,300,424,40}, "Defeated...", 30, C_RED);
-            Rectangle retry = { 320, 400, 180, 50 };
-            Rectangle give  = { 520, 400, 180, 50 };
+            txt_c((Rectangle){300,300,424,40}, 28, C_RED, "Defeated...");
+            Rectangle retry = { 320, 398, 180, 50 };
+            Rectangle give  = { 520, 398, 180, 50 };
             if (ui_button(retry, "Retry", true)) {
                 combat_start(cs->gateway, cs->floor);
+                anim_combat_reset();
                 player_rest(&g_player);
+                g_scene_dirty = true;
             }
             if (ui_button(give, "Give Up", true)) {
-                g_scene = SCENE_GAME_OVER;
+                snd_game_over();
+                anim_fade_to(SCENE_GAME_OVER);
             }
         }
     }
@@ -455,97 +534,97 @@ static int s_inv_selected = -1;
 
 void ui_draw_inventory(void)
 {
-    DrawText("Equipment & Inventory", 20, 16, 26, C_GOLD);
+    txt(20, 16, 26, C_GOLD, "Equipment & Inventory");
 
-    /* Equipment slots */
     Rectangle eq_panel = { 20, 60, 300, 180 };
     ui_panel(eq_panel, C_PANEL, C_BORDER);
-    DrawText("Equipped", 34, 70, 18, C_WHITE);
+    txt(34, 70, 17, C_WHITE, "Equipped");
     static const char *slot_labels[] = { "Weapon", "Armor ", "Access" };
     for (int s = 0; s < EQUIP_SLOT_COUNT; s++) {
         int eid = g_player.equip[s];
         const char *nm = (eid >= 0) ? g_items[eid].name : "(empty)";
         Rectangle sr = { 34, (float)(102 + s * 44), 272, 36 };
-        bool clicked = ui_button(sr, TextFormat("%s: %s", slot_labels[s], nm), true);
-        if (clicked && eid >= 0) {
+        if (ui_button(sr, TextFormat("%s: %s", slot_labels[s], nm), true)
+            && eid >= 0)
+        {
             player_unequip(&g_player, (EquipSlot)s);
             s_inv_selected = -1;
+            g_scene_dirty = true;
         }
     }
 
-    /* Bag */
     Rectangle bag_panel = { 20, 260, 300, SCREEN_H - 320 };
     ui_panel(bag_panel, C_PANEL, C_BORDER);
-    DrawText("Bag", 34, 270, 18, C_WHITE);
+    txt(34, 270, 17, C_WHITE, "Bag");
     int row = 0;
     for (int i = 0; i < MAX_INVENTORY; i++) {
         int id = g_player.bag_ids[i];
         if (id < 0) continue;
         char lbl[64];
-        snprintf(lbl, sizeof(lbl), "%s%s",
-            g_items[id].name,
+        snprintf(lbl, sizeof(lbl), "%s%s", g_items[id].name,
             (g_items[id].type == ITEM_CONSUMABLE) ?
                 TextFormat(" x%d", g_player.bag_qty[i]) : "");
         Rectangle br = { 34, (float)(296 + row * 44), 272, 36 };
         bool sel = (s_inv_selected == i);
-        Color bg = sel ? (Color){60,60,110,255} : C_BTN;
-        DrawRectangleRec(br, bg);
+        DrawRectangleRec(br, sel ? (Color){60,60,110,255} : C_BTN);
         DrawRectangleLinesEx(br, 1, C_BORDER);
-        DrawText(lbl, (int)br.x + 8, (int)br.y + 10, 16, C_WHITE);
+        txt((int)br.x + 8, (int)br.y + 10, 15, C_WHITE, lbl);
         Vector2 m = GetMousePosition();
-        if (CheckCollisionPointRec(m, br) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        if (CheckCollisionPointRec(m, br) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             s_inv_selected = (sel ? -1 : i);
-        row++;
-        if (row >= 10) break;
+            snd_click();
+        }
+        if (++row >= 10) break;
     }
 
-    /* Detail / action panel */
     Rectangle detail = { 340, 60, SCREEN_W - 360, SCREEN_H - 120 };
     ui_panel(detail, C_PANEL, C_BORDER);
 
     if (s_inv_selected >= 0 && g_player.bag_ids[s_inv_selected] >= 0) {
         int id = g_player.bag_ids[s_inv_selected];
         const ItemDef *it = &g_items[id];
-        DrawText(it->name, 360, 76, 22, C_GOLD);
+        txt(360, 76, 22, C_GOLD, it->name);
         static const char *type_names[] = { "None","Weapon","Armor","Accessory","Consumable" };
-        DrawText(type_names[it->type], 360, 104, 16, C_DIM);
-        DrawText(TextFormat("Sell value: %d gold", it->price/2), 360, 128, 16, C_GOLD);
+        txt(360, 104, 15, C_DIM, type_names[it->type]);
+        txt(360, 124, 15, C_GOLD, TextFormat("Sell value: %d gold", it->price/2));
 
-        int dy = 158;
-        if (it->bonus_life) { DrawText(TextFormat("+%d Life",    it->bonus_life), 360, dy, 16, C_HP);    dy+=22; }
-        if (it->bonus_mana) { DrawText(TextFormat("+%d Mana",    it->bonus_mana), 360, dy, 16, C_MP);    dy+=22; }
-        if (it->bonus_str)  { DrawText(TextFormat("+%d Strength",it->bonus_str),  360, dy, 16, C_WHITE); dy+=22; }
-        if (it->bonus_spd)  { DrawText(TextFormat("+%d Speed",   it->bonus_spd),  360, dy, 16, C_WHITE); dy+=22; }
-        if (it->bonus_def)  { DrawText(TextFormat("+%d Defense", it->bonus_def),  360, dy, 16, C_WHITE); dy+=22; }
+        int dy = 154;
+        if (it->bonus_life) { txt(360, dy, 15, C_HP,    TextFormat("+%d Life",    it->bonus_life)); dy+=22; }
+        if (it->bonus_mana) { txt(360, dy, 15, C_MP,    TextFormat("+%d Mana",    it->bonus_mana)); dy+=22; }
+        if (it->bonus_str)  { txt(360, dy, 15, C_WHITE, TextFormat("+%d Strength",it->bonus_str));  dy+=22; }
+        if (it->bonus_spd)  { txt(360, dy, 15, C_WHITE, TextFormat("+%d Speed",   it->bonus_spd));  dy+=22; }
+        if (it->bonus_def)  { txt(360, dy, 15, C_WHITE, TextFormat("+%d Defense", it->bonus_def));  dy+=22; }
 
         if (it->type == ITEM_WEAPON || it->type == ITEM_ARMOR || it->type == ITEM_ACCESSORY) {
-            Rectangle equip_btn = { 360, (float)(dy + 20), 160, 44 };
-            if (ui_button(equip_btn, "Equip", true)) {
+            Rectangle eb = { 360, (float)(dy + 20), 150, 44 };
+            if (ui_button(eb, "Equip", true)) {
                 player_equip(&g_player, id);
                 s_inv_selected = -1;
+                g_scene_dirty = true;
             }
         }
         if (it->type == ITEM_CONSUMABLE) {
-            Rectangle use_btn = { 360, (float)(dy + 20), 120, 44 };
-            if (ui_button(use_btn, "Use", true)) {
+            Rectangle ub = { 360, (float)(dy + 20), 120, 44 };
+            if (ui_button(ub, "Use", true)) {
                 player_use_consumable(&g_player, id);
                 s_inv_selected = -1;
             }
         }
-        Rectangle sell_btn = { 360, (float)(dy + 74), 120, 44 };
-        if (ui_button(sell_btn, "Sell", true)) {
+        Rectangle sb = { 360, (float)(dy + 74), 120, 44 };
+        if (ui_button(sb, "Sell", true)) {
             g_player.gold += it->price / 2;
             player_remove_item(&g_player, id);
             s_inv_selected = -1;
+            g_scene_dirty = true;
         }
     } else {
-        DrawText("Select an item from your bag.", 360, 140, 18, C_DIM);
+        txt(360, 140, 17, C_DIM, "Select an item from your bag.");
     }
 
     Rectangle back = { 340, (float)(SCREEN_H - 56), 140, 44 };
     if (ui_button(back, "<- Back", true)) {
         s_inv_selected = -1;
-        g_scene = SCENE_HUB;
+        anim_fade_to(SCENE_HUB);
     }
 }
 
@@ -554,10 +633,9 @@ static int s_shop_sel = -1;
 
 void ui_draw_shop(void)
 {
-    DrawText("Shop", 20, 16, 28, C_GOLD);
-    DrawText(TextFormat("Your Gold: %d", g_player.gold), 20, 52, 20, C_GOLD);
+    txt(20, 16, 26, C_GOLD, "Shop");
+    txt(20, 50, 19, C_GOLD, TextFormat("Your Gold: %d", g_player.gold));
 
-    /* Item list */
     Rectangle list_panel = { 20, 80, 380, SCREEN_H - 140 };
     ui_panel(list_panel, C_PANEL, C_BORDER);
     for (int i = 0; i < g_shop.count; i++) {
@@ -567,145 +645,134 @@ void ui_draw_shop(void)
         snprintf(lbl, sizeof(lbl), "%s  [%dg]", it->name, it->price);
         Rectangle ir = { 34, (float)(94 + i * 48), 352, 40 };
         bool sel = (s_shop_sel == i);
-        Color bg  = sel ? (Color){60,60,110,255} : C_BTN;
-        DrawRectangleRec(ir, bg);
+        DrawRectangleRec(ir, sel ? (Color){60,60,110,255} : C_BTN);
         DrawRectangleLinesEx(ir, 1, C_BORDER);
         Color tc = (g_player.gold >= it->price) ? C_WHITE : C_DIM;
-        DrawText(lbl, (int)ir.x + 8, (int)ir.y + 12, 16, tc);
+        txt((int)ir.x + 8, (int)ir.y + 12, 15, tc, lbl);
         Vector2 m = GetMousePosition();
-        if (CheckCollisionPointRec(m, ir) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        if (CheckCollisionPointRec(m, ir) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             s_shop_sel = (sel ? -1 : i);
+            snd_click();
+        }
     }
 
-    /* Detail + buy panel */
     Rectangle det = { 420, 80, SCREEN_W - 440, SCREEN_H - 140 };
     ui_panel(det, C_PANEL, C_BORDER);
 
     if (s_shop_sel >= 0 && s_shop_sel < g_shop.count) {
         int id = g_shop.item_ids[s_shop_sel];
         const ItemDef *it = &g_items[id];
-        DrawText(it->name, 436, 96, 22, C_GOLD);
-        DrawText(TextFormat("Price: %d gold", it->price), 436, 126, 18, C_GOLD);
+        txt(436, 96, 22, C_GOLD, it->name);
+        txt(436, 124, 17, C_GOLD, TextFormat("Price: %d gold", it->price));
 
-        int dy = 160;
-        static const char *type_names[] = { "None","Weapon","Armor","Accessory","Consumable" };
-        DrawText(type_names[it->type], 436, dy, 16, C_DIM); dy += 28;
-        if (it->bonus_life) { DrawText(TextFormat("+%d Life",    it->bonus_life), 436, dy, 16, C_HP);    dy+=22; }
-        if (it->bonus_mana) { DrawText(TextFormat("+%d Mana",    it->bonus_mana), 436, dy, 16, C_MP);    dy+=22; }
-        if (it->bonus_str)  { DrawText(TextFormat("+%d Strength",it->bonus_str),  436, dy, 16, C_WHITE); dy+=22; }
-        if (it->bonus_spd)  { DrawText(TextFormat("+%d Speed",   it->bonus_spd),  436, dy, 16, C_WHITE); dy+=22; }
-        if (it->bonus_def)  { DrawText(TextFormat("+%d Defense", it->bonus_def),  436, dy, 16, C_WHITE); dy+=22; }
+        int dy = 158;
+        static const char *type_names[] = {"None","Weapon","Armor","Accessory","Consumable"};
+        txt(436, dy, 15, C_DIM, type_names[it->type]); dy += 28;
+        if (it->bonus_life) { txt(436, dy, 15, C_HP,    TextFormat("+%d Life",    it->bonus_life)); dy+=22; }
+        if (it->bonus_mana) { txt(436, dy, 15, C_MP,    TextFormat("+%d Mana",    it->bonus_mana)); dy+=22; }
+        if (it->bonus_str)  { txt(436, dy, 15, C_WHITE, TextFormat("+%d Strength",it->bonus_str));  dy+=22; }
+        if (it->bonus_spd)  { txt(436, dy, 15, C_WHITE, TextFormat("+%d Speed",   it->bonus_spd));  dy+=22; }
+        if (it->bonus_def)  { txt(436, dy, 15, C_WHITE, TextFormat("+%d Defense", it->bonus_def));  dy+=22; }
 
-        bool can_afford = (g_player.gold >= it->price);
+        bool can = (g_player.gold >= it->price);
         Rectangle buy_btn = { 436, (float)(dy + 30), 140, 48 };
-        if (ui_button(buy_btn, "Buy", can_afford)) {
-            if (can_afford && player_add_item(&g_player, id)) {
+        if (ui_button(buy_btn, "Buy", can)) {
+            if (player_add_item(&g_player, id)) {
                 g_player.gold -= it->price;
+                g_scene_dirty = true;
             }
         }
-        if (!can_afford)
-            DrawText("Not enough gold!", 436, (float)(dy + 84), 16, C_RED);
+        if (!can) txt(436, (float)(dy + 84), 15, C_RED, "Not enough gold!");
     } else {
-        DrawText("Select an item to view details.", 436, 160, 18, C_DIM);
+        txt(436, 160, 17, C_DIM, "Select an item.");
     }
 
     Rectangle back = { 20, (float)(SCREEN_H - 56), 140, 44 };
     if (ui_button(back, "<- Back", true)) {
         s_shop_sel = -1;
-        g_scene = SCENE_HUB;
+        anim_fade_to(SCENE_HUB);
     }
 }
 
 /* ── SKILLS ── */
 void ui_draw_skills(void)
 {
-    DrawText("Skill Master", 20, 16, 28, C_GOLD);
-    DrawText(TextFormat("Skill Points: %d", g_player.skill_points),
-        20, 52, 20, C_WHITE);
-    DrawText(TextFormat("Class: %s", class_name(g_player.pc)), 300, 52, 20, C_DIM);
+    txt(20, 16, 26, C_GOLD, "Skill Master");
+    txt(20, 50, 19, C_WHITE, TextFormat("Skill Points: %d", g_player.skill_points));
+    txt(300, 50, 18, C_DIM, TextFormat("Class: %s", class_name(g_player.pc)));
 
     const SkillDef *skills = skills_for_class(g_player.pc);
     for (int i = 0; i < MAX_SKILLS; i++) {
         const SkillDef *sk = &skills[i];
         int slvl = g_player.skill_level[i];
-        int cost  = sk->mana_cost + (slvl - 1) * 2;
+        int cost = sk->mana_cost + (slvl - 1) * 2;
         Rectangle row = { 20, (float)(90 + i * 110), SCREEN_W - 40, 100 };
         ui_panel(row, C_PANEL, C_BORDER);
 
-        DrawText(sk->name, 36, (int)row.y + 12, 20, C_GOLD);
-        DrawText(TextFormat("Lv %d / %d", slvl, sk->max_level),
-            250, (int)row.y + 14, 16, slvl >= sk->max_level ? C_GREEN : C_WHITE);
-        DrawText(TextFormat("Mana cost: %d", cost), 360, (int)row.y + 14, 16, C_MP);
-        DrawText(sk->desc, 36, (int)row.y + 42, 15, C_DIM);
-        /* effect summary */
-        static const char *eff_names[] = {
+        txt(36, (int)row.y + 12, 20, C_GOLD, sk->name);
+        txt(250,(int)row.y + 14, 15,
+            slvl >= sk->max_level ? C_GREEN : C_WHITE,
+            TextFormat("Lv %d / %d", slvl, sk->max_level));
+        txt(360,(int)row.y + 14, 15, C_MP, TextFormat("MP cost: %d", cost));
+        txt(36, (int)row.y + 42, 14, C_DIM, sk->desc);
+
+        static const char *eff[] = {
             "Damage","Heal","Buff","Debuff","DoT","Stun","Dodge","Multi-hit"
         };
-        DrawText(TextFormat("Effect: %s  Base: %d",
-            eff_names[sk->effect], sk->base_value),
-            36, (int)row.y + 64, 14, C_DIM);
+        txt(36, (int)row.y + 64, 13, C_DIM,
+            TextFormat("Effect: %s  Base: %d", eff[sk->effect], sk->base_value));
 
-        bool can_upgrade = (g_player.skill_points > 0 && slvl < sk->max_level);
-        Rectangle up_btn = { (float)(SCREEN_W - 170), row.y + 26, 140, 44 };
-        if (ui_button(up_btn, "Upgrade", can_upgrade)) {
+        bool can = (g_player.skill_points > 0 && slvl < sk->max_level);
+        Rectangle up = { (float)(SCREEN_W - 170), row.y + 28, 140, 44 };
+        if (ui_button(up, "Upgrade", can)) {
             g_player.skill_level[i]++;
             g_player.skill_points--;
+            g_scene_dirty = true;
         }
     }
-
     Rectangle back = { 20, (float)(SCREEN_H - 56), 140, 44 };
-    if (ui_button(back, "<- Back", true)) g_scene = SCENE_HUB;
+    if (ui_button(back, "<- Back", true)) anim_fade_to(SCENE_HUB);
 }
 
 /* ── LEVEL UP ── */
 void ui_draw_level_up(void)
 {
     int cx = SCREEN_W / 2;
-    DrawText("LEVEL UP!", cx - MeasureText("LEVEL UP!", 48) / 2, 60, 48, C_GOLD);
-    DrawText(TextFormat("You are now Level %d!", g_player.level),
-        cx - MeasureText(TextFormat("You are now Level %d!", g_player.level), 24)/2,
-        120, 24, C_WHITE);
+    txt(cx - txt_w("LEVEL UP!", 46)/2, 60, 46, C_GOLD, "LEVEL UP!");
+    txt(cx - txt_w(TextFormat("You are now Level %d!", g_player.level), 22)/2,
+        118, 22, C_WHITE, TextFormat("You are now Level %d!", g_player.level));
+    txt(cx - 160, 160, 19, C_WHITE, TextFormat("Stat points:  %d", g_player.stat_points));
+    txt(cx - 160, 184, 17, C_DIM,   TextFormat("Skill points: %d", g_player.skill_points));
 
-    DrawText(TextFormat("Stat points remaining: %d", g_player.stat_points),
-        cx - 160, 168, 20, C_WHITE);
-    DrawText(TextFormat("Skill points remaining: %d", g_player.skill_points),
-        cx - 160, 194, 18, C_DIM);
-
-    /* Stat allocation buttons */
-    static const struct { const char *lbl; int field; int delta; Color col; } stats[] = {
-        { "+Life (+10)",     0, 10, (Color){200,60,60,255}  },
-        { "+Mana (+10)",     1, 10, (Color){60,80,200,255}  },
-        { "+Strength (+2)",  2,  2, (Color){200,200,60,255} },
-        { "+Speed (+2)",     3,  2, (Color){60,200,120,255} },
-        { "+Defense (+1)",   4,  1, (Color){180,180,180,255}},
+    static const struct { const char *lbl; int field; int delta; } stats[] = {
+        { "+Life (+10)",    0, 10 },
+        { "+Mana (+10)",    1, 10 },
+        { "+Strength (+2)", 2,  2 },
+        { "+Speed (+2)",    3,  2 },
+        { "+Defense (+1)",  4,  1 },
     };
     for (int i = 0; i < 5; i++) {
-        Rectangle btn = { (float)(cx - 150), (float)(240 + i * 60), 300, 48 };
+        Rectangle btn = { (float)(cx - 150), (float)(230 + i * 60), 300, 48 };
         bool can = (g_player.stat_points > 0);
         if (ui_button(btn, stats[i].lbl, can) && can) {
             g_player.stat_points--;
             int *fields[] = {
-                &g_player.base.max_life,
-                &g_player.base.max_mana,
-                &g_player.base.strength,
-                &g_player.base.speed,
+                &g_player.base.max_life, &g_player.base.max_mana,
+                &g_player.base.strength, &g_player.base.speed,
                 &g_player.base.defense
             };
             *fields[stats[i].field] += stats[i].delta;
-            /* top up current life/mana when max increases */
             if (stats[i].field == 0) g_player.current_life += stats[i].delta;
             if (stats[i].field == 1) g_player.current_mana += stats[i].delta;
+            g_scene_dirty = true;
         }
     }
 
-    /* Done button – only when no pending points or player chooses to defer */
+    Rectangle done_btn = { (float)(cx - 100), 556, 200, 50 };
     bool done = (g_player.stat_points == 0);
-    Rectangle done_btn = { (float)(cx - 100), 560, 200, 50 };
     if (ui_button(done_btn, done ? "Done!" : "Skip for now", true)) {
-        if (g_player.skill_points > 0)
-            g_scene = SCENE_SKILLS;
-        else
-            g_scene = SCENE_HUB;
+        if (g_player.skill_points > 0) anim_fade_to(SCENE_SKILLS);
+        else anim_fade_to(SCENE_HUB);
     }
 }
 
@@ -713,80 +780,74 @@ void ui_draw_level_up(void)
 void ui_draw_gateway_select(void)
 {
     GatewayId gw = g_combat.gateway;
-    static const char *gw_labels[] = {
-        "Human Gateway", "Monster Portal", "Dark Rift"
-    };
+    static const char *gw_labels[] = { "Human Gateway", "Monster Portal", "Dark Rift" };
     static const char *gw_flavor[] = {
-        "20 floors of human warriors – main story path.",
-        "10 floors of monsters – optional challenge.",
-        "5 floors of darkness – post-game ultimate challenge."
+        "20 floors of human warriors - main story path.",
+        "10 floors of monsters - optional challenge.",
+        "5 floors of darkness - post-game ultimate challenge."
     };
-
     int cx = SCREEN_W / 2;
-    DrawText(gw_labels[gw],
-        cx - MeasureText(gw_labels[gw], 32)/2, 30, 32, C_GOLD);
-    DrawText(gw_flavor[gw],
-        cx - MeasureText(gw_flavor[gw], 16)/2, 74, 16, C_DIM);
+    txt(cx - txt_w(gw_labels[gw], 30)/2, 30, 30, C_GOLD, gw_labels[gw]);
+    txt(cx - txt_w(gw_flavor[gw], 15)/2, 72, 15, C_DIM, gw_flavor[gw]);
 
     int prog = g_player.gw_progress[gw];
-    DrawText(TextFormat("Progress: %d / %d floors", prog, GATEWAY_DEPTH),
-        cx - 120, 104, 18, C_WHITE);
+    txt(cx - 120, 100, 17, C_WHITE,
+        TextFormat("Progress: %d / %d floors", prog, GATEWAY_DEPTH));
 
-    /* Floor list */
     for (int f = 0; f < GATEWAY_DEPTH; f++) {
-        int enemy_id = g_gw_enemies[gw][f];
-        const EnemyDef *e = &g_enemies[enemy_id];
+        int eid = g_gw_enemies[gw][f];
+        const EnemyDef *e = &g_enemies[eid];
         bool completed = (f < prog);
         bool current   = (f == prog);
-        bool locked    = (f > prog);
+        
 
-        Rectangle row = { (float)(cx - 260), (float)(148 + f * 88), 520, 76 };
-        Color border   = completed ? C_GREEN : (current ? C_GOLD : C_BORDER);
+        Rectangle row = { (float)(cx - 260), (float)(144 + f * 88), 520, 76 };
+        Color border = completed ? C_GREEN : (current ? C_GOLD : C_BORDER);
         ui_panel(row, C_PANEL, border);
 
-        DrawText(TextFormat("Floor %d: %s", f + 1, e->name),
-            cx - 244, (int)row.y + 10, 20,
-            completed ? C_GREEN : (current ? C_WHITE : C_DIM));
-        DrawText(TextFormat("HP: %d  STR: %d  SPD: %d  XP: %d  Gold: %d",
-            e->base_stats.max_life, e->base_stats.strength,
-            e->base_stats.speed, e->xp_reward, e->gold_reward),
-            cx - 244, (int)row.y + 38, 14,
-            locked ? C_DIM : C_DIM);
+        txt(cx - 244, (int)row.y + 10, 19,
+            completed ? C_GREEN : (current ? C_WHITE : C_DIM),
+            TextFormat("Floor %d: %s", f + 1, e->name));
+        txt(cx - 244, (int)row.y + 38, 13, C_DIM,
+            TextFormat("HP: %d  STR: %d  SPD: %d  XP: %d  Gold: %d",
+                e->base_stats.max_life, e->base_stats.strength,
+                e->base_stats.speed, e->xp_reward, e->gold_reward));
 
         if (completed) {
-            DrawText("CLEARED", (int)row.x + (int)row.width - 100, (int)row.y + 26, 18, C_GREEN);
+            txt((int)row.x + (int)row.width - 100, (int)row.y + 26, 17, C_GREEN, "CLEARED");
         } else if (current) {
             Rectangle fb = { row.x + row.width - 140, row.y + 14, 130, 44 };
             if (ui_button(fb, "Enter!", true)) {
                 combat_start(gw, f);
+                anim_combat_reset();
                 g_scene = SCENE_COMBAT;
+                g_scene_dirty = true;
             }
         } else {
-            DrawText("LOCKED", (int)row.x + (int)row.width - 90, (int)row.y + 26, 18, C_DIM);
+            txt((int)row.x + (int)row.width - 90, (int)row.y + 26, 17, C_DIM, "LOCKED");
         }
     }
 
     Rectangle back = { 20, (float)(SCREEN_H - 56), 140, 44 };
-    if (ui_button(back, "<- Back", true)) g_scene = SCENE_HUB;
+    if (ui_button(back, "<- Back", true)) anim_fade_to(SCENE_HUB);
 }
 
 /* ── GAME OVER ── */
 void ui_draw_game_over(void)
 {
     int cx = SCREEN_W / 2;
-    DrawText("GAME OVER",
-        cx - MeasureText("GAME OVER", 60)/2, 160, 60, C_RED);
-    DrawText(TextFormat("You fell as a Level %d %s.", g_player.level, class_name(g_player.pc)),
-        cx - 180, 250, 22, C_WHITE);
-    DrawText(TextFormat("Gold earned: %d", g_player.gold),
-        cx - 80, 286, 18, C_GOLD);
+    txt(cx - txt_w("GAME OVER", 58)/2, 160, 58, C_RED, "GAME OVER");
+    txt(cx - 200, 248, 21, C_WHITE,
+        TextFormat("You fell as a Level %d %s.", g_player.level, class_name(g_player.pc)));
+    txt(cx - 80, 282, 17, C_GOLD, TextFormat("Gold earned: %d", g_player.gold));
 
-    Rectangle replay = { (float)(cx - 110), 360, 220, 54 };
+    Rectangle replay = { (float)(cx - 110), 358, 220, 54 };
     if (ui_button(replay, "Play Again", true)) {
-        g_scene    = SCENE_TITLE;
-        s_naming   = false;
+        g_scene_dirty = true;
+        s_naming = false;
         s_name_len = 4;
         memcpy(s_name_buf, "Hero", 5);
+        anim_fade_to(SCENE_TITLE);
     }
 }
 
@@ -794,24 +855,20 @@ void ui_draw_game_over(void)
 void ui_draw_victory(void)
 {
     int cx = SCREEN_W / 2;
-    DrawText("VICTORY!",
-        cx - MeasureText("VICTORY!", 60)/2, 100, 60, C_GOLD);
-    DrawText("You have conquered the Dark Rift!",
-        cx - MeasureText("You have conquered the Dark Rift!", 24)/2, 176, 24, C_WHITE);
-    DrawText("Warlord Baka has been defeated. Peace returns to the land.",
-        cx - MeasureText("Warlord Baka has been defeated. Peace returns to the land.", 16)/2,
-        214, 16, C_DIM);
+    txt(cx - txt_w("VICTORY!", 58)/2, 100, 58, C_GOLD, "VICTORY!");
+    txt(cx - txt_w("You have conquered the Dark Rift!", 22)/2,
+        174, 22, C_WHITE, "You have conquered the Dark Rift!");
+    txt(cx - txt_w("Warlord Baka has been defeated.", 15)/2,
+        210, 15, C_DIM, "Warlord Baka has been defeated.");
+    txt(cx - 100, 268, 19, C_WHITE, TextFormat("Final Level: %d", g_player.level));
+    txt(cx - 100, 294, 19, C_GOLD,  TextFormat("Gold: %d",        g_player.gold));
 
-    DrawText(TextFormat("Final Level: %d", g_player.level), cx - 100, 270, 20, C_WHITE);
-    DrawText(TextFormat("Gold: %d", g_player.gold),          cx - 100, 296, 20, C_GOLD);
-
-    Rectangle hub_btn  = { (float)(cx - 230), 380, 200, 54 };
-    Rectangle play_btn = { (float)(cx + 30),  380, 200, 54 };
-    if (ui_button(hub_btn,  "Return to Hub",  true)) g_scene = SCENE_HUB;
-    if (ui_button(play_btn, "Play Again",     true)) {
-        g_scene    = SCENE_TITLE;
-        s_naming   = false;
-        s_name_len = 4;
-        memcpy(s_name_buf, "Hero", 5);
+    Rectangle hub_btn  = { (float)(cx - 230), 378, 200, 54 };
+    Rectangle play_btn = { (float)(cx + 30),  378, 200, 54 };
+    if (ui_button(hub_btn, "Return to Hub", true)) anim_fade_to(SCENE_HUB);
+    if (ui_button(play_btn,"Play Again",    true)) {
+        g_scene_dirty = true;
+        s_naming = false; s_name_len = 4; memcpy(s_name_buf, "Hero", 5);
+        anim_fade_to(SCENE_TITLE);
     }
 }

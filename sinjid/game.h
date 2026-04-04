@@ -216,6 +216,9 @@ extern ShopState    g_shop;
 extern LevelUpState g_lvlup;
 extern int          g_hover_btn;   // index of hovered button this frame
 
+// anim.h forward
+extern bool         g_scene_dirty; // set true to force static-layer redraw
+
 // ─────────────────────────────────────────────
 //  Forward declarations of subsystems
 // ─────────────────────────────────────────────

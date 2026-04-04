@@ -14,6 +14,10 @@ void ui_panel(Rectangle r, Color fill, Color border);
 // Draw text centered inside a rectangle
 void ui_text_center(Rectangle r, const char *text, int font_size, Color col);
 
+// ── Lifecycle (call once) ─────────────────────────────────────────────────
+void ui_init(void);    // loads TTF font
+void ui_close(void);   // unloads font
+
 // ── Scene renderers ───────────────────────────────────────────────────────
 void ui_draw_title(void);
 void ui_draw_class_select(void);
