@@ -6,6 +6,14 @@ typedef struct { int life; int mana; } ConsumeEffect;
 extern ConsumeEffect g_consume_effect[];
 extern const int     g_consume_effect_count;
 
+/* Enemy skill entry – shared between data.c and combat.c */
+typedef struct {
+    SkillEffectType effect;
+    int             value;
+    const char     *name;
+} EnemySkill;
+extern const EnemySkill g_enemy_skill_table[];
+
 /* Initialise all data tables from built-in defaults.
    Call once at startup before data_load_files(). */
 void data_init_defaults(void);

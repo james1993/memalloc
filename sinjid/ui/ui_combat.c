@@ -59,23 +59,12 @@ void ui_draw_combat(void)
 {
     CombatState *cs = &g_ctx.combat;
 
-    /* Drain events first (filled by combat logic this frame) */
+    /* Drain events pushed by update.c (enemy turn) or player actions */
     process_events();
-
-    /* Auto-advance enemy turn with a brief delay */
-    if (!cs->player_turn && !cs->combat_over) {
-        static float enemy_delay = 0.6f;
-        enemy_delay -= GetFrameTime();
-        if (enemy_delay <= 0.0f) {
-            combat_enemy_turn();
-            process_events();   /* pick up EVT_HIT_PLAYER etc. from enemy turn */
-            enemy_delay = 0.6f;
-        }
-    }
 
     draw_combatant(30, 30, 300, g_ctx.player.name,
         g_ctx.canim.player_life, g_ctx.canim.player_mana,
-        player_effective_life(), player_effective_mana(),
+        player_effective_life(&g_ctx.player), player_effective_mana(&g_ctx.player),
         (Color){40,60,120,255}, g_ctx.player.status,
         g_ctx.canim.player_bob_t, g_ctx.canim.player_flash, g_ctx.canim.player_flash_col);
 

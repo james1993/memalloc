@@ -124,20 +124,31 @@ ConsumeEffect g_consume_effect[MAX_ITEMS];
 const int g_consume_effect_count = MAX_ITEMS;
 
 // ─────────────────────────────────────────────
-//  Shop inventories
+//  Shop inventories (mutable; may be overridden by shops.dat)
 // ─────────────────────────────────────────────
-const int g_shop_basic[]      = { 1, 11, 17, 19, 23, 24, 25 };
-const int g_shop_basic_count  = 7;
-const int g_shop_mid[]        = { 3, 4, 5, 13, 14, 18, 20, 21, 24, 25, 26 };
-const int g_shop_mid_count    = 11;
-const int g_shop_adv[]        = { 7, 8, 9, 10, 15, 16, 22, 26 };
-const int g_shop_adv_count    = 8;
+int g_shop_basic[MAX_ITEMS];
+int g_shop_basic_count;
+int g_shop_mid[MAX_ITEMS];
+int g_shop_mid_count;
+int g_shop_adv[MAX_ITEMS];
+int g_shop_adv_count;
+
+static void init_shops(void)
+{
+    int basic[] = { 1, 11, 17, 19, 23, 24, 25 };
+    int mid[]   = { 3, 4, 5, 13, 14, 18, 20, 21, 24, 25, 26 };
+    int adv[]   = { 7, 8, 9, 10, 15, 16, 22, 26 };
+    g_shop_basic_count = (int)(sizeof(basic)/sizeof(basic[0]));
+    g_shop_mid_count   = (int)(sizeof(mid)/sizeof(mid[0]));
+    g_shop_adv_count   = (int)(sizeof(adv)/sizeof(adv[0]));
+    memcpy(g_shop_basic, basic, sizeof(basic));
+    memcpy(g_shop_mid,   mid,   sizeof(mid));
+    memcpy(g_shop_adv,   adv,   sizeof(adv));
+}
 
 // ─────────────────────────────────────────────
 //  Enemy definitions
 // ─────────────────────────────────────────────
-typedef struct { SkillEffectType effect; int value; const char *name; } EnemySkill;
-
 const EnemySkill g_enemy_skill_table[] = {
     { SKILL_EFFECT_DAMAGE,  120, "Heavy Blow"    },
     { SKILL_EFFECT_DOT,      15, "Poison Strike" },
@@ -209,6 +220,7 @@ void data_init_defaults(void)
     init_items();
     init_enemies();
     init_gw_enemies();
+    init_shops();
     memcpy(g_consume_effect, s_consume_defaults,
            sizeof(s_consume_defaults));
 }

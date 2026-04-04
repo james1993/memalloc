@@ -36,8 +36,8 @@ void ui_draw_hub(void)
     txt(rx + 232, ry + 80, 13, C_DIM,
         TextFormat("%d / %d", g_ctx.player.xp, g_ctx.player.xp_to_next));
 
-    int max_life = player_effective_life();
-    int max_mana = player_effective_mana();
+    int max_life = player_effective_life(&g_ctx.player);
+    int max_mana = player_effective_mana(&g_ctx.player);
     txt(rx, ry + 102, 15, C_DIM, "HP:");
     ui_bar(rx + 28, ry + 102, 200, 13,
            g_ctx.player.current_life, max_life, C_HP, C_BTN);
@@ -51,9 +51,9 @@ void ui_draw_hub(void)
         TextFormat("%d/%d", g_ctx.player.current_mana, max_mana));
 
     txt(rx, ry + 150, 15, C_DIM, "-- Stats --");
-    txt(rx, ry + 170, 16, C_WHITE, TextFormat("Strength:  %d", player_effective_str()));
-    txt(rx, ry + 190, 16, C_WHITE, TextFormat("Speed:     %d", player_effective_spd()));
-    txt(rx, ry + 210, 16, C_WHITE, TextFormat("Defense:   %d", player_effective_def()));
+    txt(rx, ry + 170, 16, C_WHITE, TextFormat("Strength:  %d", player_effective_str(&g_ctx.player, &g_ctx.combat)));
+    txt(rx, ry + 190, 16, C_WHITE, TextFormat("Speed:     %d", player_effective_spd(&g_ctx.player, &g_ctx.combat)));
+    txt(rx, ry + 210, 16, C_WHITE, TextFormat("Defense:   %d", player_effective_def(&g_ctx.player, &g_ctx.combat)));
 
     txt(rx, ry + 242, 15, C_DIM, "-- Equipment --");
     static const char *slot_names[] = { "Weapon", "Armor ", "Access" };

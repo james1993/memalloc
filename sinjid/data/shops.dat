@@ -1,0 +1,36 @@
+# shops.dat – shop inventory lists
+# item= entries reference item IDs (order in items.dat, 0-based)
+# Beginner's Shop: iron/leather gear + basic consumables
+[shop_basic]
+item=1
+item=11
+item=17
+item=19
+item=23
+item=24
+item=25
+
+# Mid-Range Store: mid-tier weapons, armor, accessories, potions
+[shop_mid]
+item=3
+item=4
+item=5
+item=13
+item=14
+item=18
+item=20
+item=21
+item=24
+item=25
+item=26
+
+# Advanced Arsenal: endgame weapons, armor, accessories
+[shop_adv]
+item=7
+item=8
+item=9
+item=10
+item=15
+item=16
+item=22
+item=26

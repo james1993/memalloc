@@ -5,8 +5,8 @@
 #include "scene.h"
 #include "game.h"
 
-extern const int g_shop_adv[];
-extern const int g_shop_adv_count;
+extern int g_shop_adv[];
+extern int g_shop_adv_count;
 
 const char *hub_location_name(HubLocation loc)
 {

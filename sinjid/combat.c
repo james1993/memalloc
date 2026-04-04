@@ -12,9 +12,7 @@
     evt_push(&g_ctx.events, (type), (value), (for_player))
 
 // ── Forward declarations ──────────────────────────────────────────────────
-typedef struct { SkillEffectType effect; int value; const char *name; } EnemySkill;
-extern const EnemySkill g_enemy_skill_table[];
-extern const int        g_consume_effect_count;
+extern const int g_consume_effect_count;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -96,12 +94,13 @@ void combat_start(GatewayId gw, int floor_idx)
     cs->enemy.status       = STATUS_NONE;
     cs->enemy.status_turns = 0;
 
-    cs->str_bonus = 0;
-    cs->spd_bonus = 0;
-    cs->def_bonus = 0;
+    cs->str_bonus      = 0;
+    cs->spd_bonus      = 0;
+    cs->def_bonus      = 0;
+    cs->enemy_ai_delay = 0.6f;
 
     // Decide who goes first based on speed
-    cs->player_turn = (player_effective_spd() >= cs->enemy.base_stats.speed);
+    cs->player_turn = (player_effective_spd(&g_ctx.player, &g_ctx.combat) >= cs->enemy.base_stats.speed);
 
     combat_log("Battle starts: %s", cs->enemy.name);
     if (!cs->player_turn)
@@ -153,7 +152,7 @@ bool combat_action_attack(void)
         return true;
     }
 
-    int dmg = calc_damage(player_effective_str(), 100, e->base_stats.defense);
+    int dmg = calc_damage(player_effective_str(&g_ctx.player, &g_ctx.combat), 100, e->base_stats.defense);
     if (e->status & STATUS_SHIELDED) {
         dmg = dmg * 70 / 100;
         e->status &= ~STATUS_SHIELDED;
@@ -215,7 +214,7 @@ bool combat_action_skill(int skill_idx)
                 combat_log("%s dodges %s!", e->name, sk->name);
                 break;
             }
-            int dmg = calc_damage(player_effective_str(), scaled_val,
+            int dmg = calc_damage(player_effective_str(&g_ctx.player, &g_ctx.combat), scaled_val,
                                   e->base_stats.defense);
             if (e->status & STATUS_SHIELDED) {
                 dmg = dmg * 70 / 100;
@@ -238,7 +237,7 @@ bool combat_action_skill(int skill_idx)
             int hits  = MAX(1, sk->hits);
             for (int h = 0; h < hits; h++) {
                 if (e->current_life <= 0) break;
-                int dmg = calc_damage(player_effective_str(), scaled_val,
+                int dmg = calc_damage(player_effective_str(&g_ctx.player, &g_ctx.combat), scaled_val,
                                       e->base_stats.defense);
                 e->current_life -= dmg;
                 total += dmg;
@@ -251,7 +250,7 @@ bool combat_action_skill(int skill_idx)
         case SKILL_EFFECT_HEAL: {
             int hp = scaled_val + (slvl - 1) * 10;
             g_ctx.player.current_life = MIN(g_ctx.player.current_life + hp,
-                                        player_effective_life());
+                                        player_effective_life(&g_ctx.player));
             EVT(EVT_HEAL_PLAYER, hp, true);
             EVT(EVT_SKILL_USE, 0, true);
             combat_log("%s restores %d life.", sk->name, hp);
@@ -282,7 +281,7 @@ bool combat_action_skill(int skill_idx)
             break;
         }
         case SKILL_EFFECT_STUN: {
-            int dmg = calc_damage(player_effective_str(), scaled_val,
+            int dmg = calc_damage(player_effective_str(&g_ctx.player, &g_ctx.combat), scaled_val,
                                   e->base_stats.defense);
             e->current_life -= dmg;
             apply_enemy_status(STATUS_STUNNED, 1);
@@ -389,7 +388,7 @@ void combat_enemy_turn(void)
             combat_log("You dodge %s's attack!", e->name);
         } else if (g_ctx.player.status & STATUS_SHIELDED) {
             int dmg = calc_damage(e->base_stats.strength, 100,
-                                  player_effective_def());
+                                  player_effective_def(&g_ctx.player, &g_ctx.combat));
             dmg = dmg * 70 / 100;
             g_ctx.player.status_turns--;
             if (g_ctx.player.status_turns <= 0) g_ctx.player.status &= ~STATUS_SHIELDED;
@@ -398,7 +397,7 @@ void combat_enemy_turn(void)
             combat_log("%s attacks for %d (shielded).", e->name, dmg);
         } else {
             int dmg = calc_damage(e->base_stats.strength, 100,
-                                  player_effective_def());
+                                  player_effective_def(&g_ctx.player, &g_ctx.combat));
             g_ctx.player.current_life -= dmg;
             EVT(EVT_HIT_PLAYER, dmg, true);
             combat_log("%s attacks for %d.", e->name, dmg);
@@ -414,7 +413,7 @@ void combat_enemy_turn(void)
                     combat_log("You dodge %s's %s!", e->name, sk->name);
                 } else {
                     int dmg = calc_damage(e->base_stats.strength, sk->value,
-                                          player_effective_def());
+                                          player_effective_def(&g_ctx.player, &g_ctx.combat));
                     if (g_ctx.player.status & STATUS_SHIELDED) {
                         dmg = dmg * 70 / 100;
                         g_ctx.player.status_turns--;
@@ -443,7 +442,7 @@ void combat_enemy_turn(void)
             }
             case SKILL_EFFECT_STUN: {
                 int dmg = calc_damage(e->base_stats.strength, sk->value,
-                                      player_effective_def());
+                                      player_effective_def(&g_ctx.player, &g_ctx.combat));
                 g_ctx.player.current_life -= dmg;
                 apply_player_status(STATUS_STUNNED, 1);
                 combat_log("%s uses %s for %d + stun!", e->name, sk->name, dmg);

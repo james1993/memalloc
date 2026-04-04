@@ -18,7 +18,7 @@ UI_SRCS = ui/ui_common.c \
           ui/ui_victory.c
 
 SRCS    = main.c player.c combat.c data.c data_loader.c hub.c \
-          audio.c anim.c save.c scene.c events.c \
+          audio.c anim.c save.c scene.c events.c config.c update.c \
           $(UI_SRCS)
 
 OBJS    = $(SRCS:.c=.o)

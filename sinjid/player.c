@@ -59,9 +59,9 @@ void player_init(Player *p, const char *name, PlayerClass pc)
 
 // ── Equipment stat helpers ────────────────────────────────────────────────
 
-static int equip_bonus(EquipSlot slot, int field)
+static int equip_bonus(const Player *p, EquipSlot slot, int field)
 {
-    int id = g_ctx.player.equip[slot];
+    int id = p->equip[slot];
     if (id < 0 || id >= g_items_count) return 0;
     const ItemDef *it = &g_items[id];
     switch (field) {
@@ -74,35 +74,38 @@ static int equip_bonus(EquipSlot slot, int field)
     return 0;
 }
 
-static int total_equip_bonus(int field)
+static int total_equip_bonus(const Player *p, int field)
 {
     int total = 0;
     for (int s = 0; s < EQUIP_SLOT_COUNT; s++)
-        total += equip_bonus(s, field);
+        total += equip_bonus(p, s, field);
     return total;
 }
 
-int player_effective_life(void)
+int player_effective_life(const Player *p)
 {
-    return g_ctx.player.base.max_life + total_equip_bonus(0);
+    return p->base.max_life + total_equip_bonus(p, 0);
 }
-int player_effective_mana(void)
+int player_effective_mana(const Player *p)
 {
-    return g_ctx.player.base.max_mana + total_equip_bonus(1);
+    return p->base.max_mana + total_equip_bonus(p, 1);
 }
-int player_effective_str(void)
+int player_effective_str(const Player *p, const CombatState *cs)
 {
-    int v = g_ctx.player.base.strength + total_equip_bonus(2) + g_ctx.combat.str_bonus;
+    int bonus = cs ? cs->str_bonus : 0;
+    int v = p->base.strength + total_equip_bonus(p, 2) + bonus;
     return MAX(1, v);
 }
-int player_effective_spd(void)
+int player_effective_spd(const Player *p, const CombatState *cs)
 {
-    int v = g_ctx.player.base.speed + total_equip_bonus(3) + g_ctx.combat.spd_bonus;
+    int bonus = cs ? cs->spd_bonus : 0;
+    int v = p->base.speed + total_equip_bonus(p, 3) + bonus;
     return MAX(1, v);
 }
-int player_effective_def(void)
+int player_effective_def(const Player *p, const CombatState *cs)
 {
-    int v = g_ctx.player.base.defense + total_equip_bonus(4) + g_ctx.combat.def_bonus;
+    int bonus = cs ? cs->def_bonus : 0;
+    int v = p->base.defense + total_equip_bonus(p, 4) + bonus;
     return MAX(0, v);
 }
 
@@ -180,8 +183,8 @@ void player_equip(Player *p, int item_id)
         player_add_item(p, p->equip[slot]);
     p->equip[slot] = item_id;
     // Clamp current life/mana to new max
-    int max_life = player_effective_life();
-    int max_mana = player_effective_mana();
+    int max_life = player_effective_life(p);
+    int max_mana = player_effective_mana(p);
     if (p->current_life > max_life) p->current_life = max_life;
     if (p->current_mana > max_mana) p->current_mana = max_mana;
 }
@@ -203,17 +206,17 @@ bool player_use_consumable(Player *p, int item_id)
 
     if (item_id < g_consume_effect_count) {
         p->current_life = MIN(p->current_life + g_consume_effect[item_id].life,
-                              player_effective_life());
+                              player_effective_life(p));
         p->current_mana = MIN(p->current_mana + g_consume_effect[item_id].mana,
-                              player_effective_mana());
+                              player_effective_mana(p));
     }
     return true;
 }
 
 void player_rest(Player *p)
 {
-    p->current_life = player_effective_life();
-    p->current_mana = player_effective_mana();
+    p->current_life = player_effective_life(p);
+    p->current_mana = player_effective_mana(p);
     p->status       = STATUS_NONE;
     p->status_turns = 0;
 }

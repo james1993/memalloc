@@ -4,12 +4,13 @@
 // Initialize a fresh player with a chosen class
 void player_init(Player *p, const char *name, PlayerClass pc);
 
-// Compute total stat including equipment bonuses
-int  player_effective_str(void);
-int  player_effective_spd(void);
-int  player_effective_def(void);
-int  player_effective_life(void);
-int  player_effective_mana(void);
+// Compute total stat including equipment bonuses.
+// Pass the player and current combat state (use NULL for combat outside battle).
+int  player_effective_str (const Player *p, const CombatState *cs);
+int  player_effective_spd (const Player *p, const CombatState *cs);
+int  player_effective_def (const Player *p, const CombatState *cs);
+int  player_effective_life(const Player *p);
+int  player_effective_mana(const Player *p);
 
 // Add XP; returns true if levelled up
 bool player_add_xp(Player *p, int xp);

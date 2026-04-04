@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "config.h"
 #include <raylib.h>
 #include <stdlib.h>
 #include <math.h>
@@ -103,6 +104,7 @@ static float work[MAX_FRAMES];
 void audio_init(void)
 {
     InitAudioDevice();
+    SetMasterVolume(g_config.volume);
 
     /* Click – short square blip at 600Hz */
     WIPE();

@@ -9,10 +9,13 @@
  *   - Save files are human-readable / hand-editable.
  */
 #include "save.h"
+#include "config.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+
+#define SPATH g_config.save_path
 
 #define SAVE_VERSION_TEXT  3     /* bump only for breaking field renames */
 
@@ -35,7 +38,7 @@ static void write_str(FILE *f, const char *key, const char *v)
 /* ── Save ──────────────────────────────────────────────────────────────── */
 bool save_game(const Player *p)
 {
-    FILE *f = fopen(SAVE_PATH, "w");
+    FILE *f = fopen(SPATH, "w");
     if (!f) return false;
 
     write_int(f, "version",       SAVE_VERSION_TEXT);
@@ -89,7 +92,7 @@ bool save_game(const Player *p)
 /* ── Load ──────────────────────────────────────────────────────────────── */
 bool load_game(Player *p)
 {
-    FILE *f = fopen(SAVE_PATH, "r");
+    FILE *f = fopen(SPATH, "r");
     if (!f) return false;
 
     /* Zero-init then set defaults that a partial save shouldn't leave broken */
@@ -172,7 +175,7 @@ bool load_game(Player *p)
 /* ── Misc ── */
 bool save_exists(void)
 {
-    FILE *f = fopen(SAVE_PATH, "r");
+    FILE *f = fopen(SPATH, "r");
     if (!f) return false;
     fclose(f);
     return true;
@@ -180,5 +183,5 @@ bool save_exists(void)
 
 void save_delete(void)
 {
-    remove(SAVE_PATH);
+    remove(SPATH);
 }

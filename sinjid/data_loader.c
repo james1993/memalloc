@@ -279,6 +279,44 @@ static int load_gateways(const char *path)
     return 1;
 }
 
+// ── shops.dat ─────────────────────────────────────────────────────────────
+
+static int load_shops(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+
+    int  *cur_arr   = NULL;
+    int  *cur_count = NULL;
+    int   idx       = 0;
+
+    char line[128];
+    while (fgets(line, sizeof(line), f)) {
+        char *l = trim(line);
+        if (!*l || *l == '#') continue;
+
+        if (*l == '[') {
+            if (cur_arr && cur_count) *cur_count = idx;
+            if      (strstr(l, "basic")   != NULL) { cur_arr = g_shop_basic; cur_count = &g_shop_basic_count; }
+            else if (strstr(l, "mid")     != NULL) { cur_arr = g_shop_mid;   cur_count = &g_shop_mid_count;   }
+            else if (strstr(l, "adv")     != NULL) { cur_arr = g_shop_adv;   cur_count = &g_shop_adv_count;   }
+            else                                   { cur_arr = NULL; cur_count = NULL; }
+            idx = 0;
+            continue;
+        }
+        if (!cur_arr) continue;
+
+        char key[32], val[32];
+        kv(l, key, sizeof(key), val, sizeof(val));
+        if (strcmp(key, "item") == 0 && idx < MAX_ITEMS)
+            cur_arr[idx++] = atoi(val);
+    }
+    if (cur_arr && cur_count) *cur_count = idx;
+
+    fclose(f);
+    return 1;
+}
+
 // ── Public entry point ────────────────────────────────────────────────────
 
 int data_load_files(const char *dir)
@@ -290,6 +328,7 @@ int data_load_files(const char *dir)
     snprintf(path, sizeof(path), "%s/items.dat",    dir); loaded += load_items(path);
     snprintf(path, sizeof(path), "%s/enemies.dat",  dir); loaded += load_enemies(path);
     snprintf(path, sizeof(path), "%s/gateways.dat", dir); loaded += load_gateways(path);
+    snprintf(path, sizeof(path), "%s/shops.dat",    dir); loaded += load_shops(path);
 
     return loaded;
 }

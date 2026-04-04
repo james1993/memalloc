@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "game.h"
+#include "config.h"
 #include "scene.h"
 #include "ui.h"
 #include "player.h"
@@ -12,6 +13,7 @@
 #include "audio.h"
 #include "save.h"
 #include "events.h"
+#include "update.h"
 
 // ── Single global game context ────────────────────────────────────────────
 GameCtx g_ctx;
@@ -118,13 +120,17 @@ int main(int argc, char **argv)
     bool demo_mode = (argc > 1 && strcmp(argv[1], "--demo") == 0);
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(SCREEN_W, SCREEN_H, GAME_TITLE);
-    SetTargetFPS(TARGET_FPS);
+    InitWindow(g_config.window_w, g_config.window_h, GAME_TITLE);
+    SetTargetFPS(g_config.fps);
     SetExitKey(KEY_NULL);
+
+    // Load config first so window size, fps, volume, and paths are known
+    config_init_defaults();
+    config_load(CONFIG_PATH);
 
     // Load game data (defaults first, then override from data/ files)
     data_init_defaults();
-    data_load_files("data");
+    data_load_files(g_config.data_dir);
 
     audio_init();
     ui_init();
@@ -173,6 +179,9 @@ int main(int argc, char **argv)
             }
         }
 
+        // Update game logic (AI timers, etc.) before rendering
+        scene_update(dt);
+
         // Update animations
         anim_update(dt);
 
@@ -219,8 +228,8 @@ int main(int argc, char **argv)
                     4, 4, 15, LIME);
                 DrawText(TextFormat("Gold:%d HP:%d/%d MP:%d/%d EFlash:%.2f PFlash:%.2f",
                     g_ctx.player.gold,
-                    g_ctx.player.current_life, player_effective_life(),
-                    g_ctx.player.current_mana, player_effective_mana(),
+                    g_ctx.player.current_life, player_effective_life(&g_ctx.player),
+                    g_ctx.player.current_mana, player_effective_mana(&g_ctx.player),
                     g_ctx.canim.enemy_flash, g_ctx.canim.player_flash),
                     4, 22, 15, LIME);
             }

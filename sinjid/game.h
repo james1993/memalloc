@@ -136,6 +136,7 @@ typedef struct {
     char      log[MAX_COMBAT_LOG][COMBAT_LOG_LEN];
     int       log_count;
     bool      show_skills, show_items;
+    float     enemy_ai_delay;   // seconds until enemy acts (set in combat_start)
 } CombatState;
 
 typedef struct {
@@ -202,12 +203,12 @@ extern EnemyDef g_enemies[MAX_ENEMIES];
 extern int      g_enemies_count;
 extern int      g_gw_enemies[NUM_GATEWAYS][GATEWAY_DEPTH];
 
-extern const int g_shop_basic[];
-extern const int g_shop_basic_count;
-extern const int g_shop_mid[];
-extern const int g_shop_mid_count;
-extern const int g_shop_adv[];
-extern const int g_shop_adv_count;
+extern int g_shop_basic[];
+extern int g_shop_basic_count;
+extern int g_shop_mid[];
+extern int g_shop_mid_count;
+extern int g_shop_adv[];
+extern int g_shop_adv_count;
 
 // ─────────────────────────────────────────────
 //  Helpers
@@ -216,9 +217,9 @@ extern const int g_shop_adv_count;
 #define MAX(a,b)       ((a)>(b)?(a):(b))
 #define MIN(a,b)       ((a)<(b)?(a):(b))
 
-int  player_effective_str(void);
-int  player_effective_spd(void);
-int  player_effective_def(void);
-int  player_effective_life(void);
-int  player_effective_mana(void);
+int  player_effective_str (const Player *p, const CombatState *cs);
+int  player_effective_spd (const Player *p, const CombatState *cs);
+int  player_effective_def (const Player *p, const CombatState *cs);
+int  player_effective_life(const Player *p);
+int  player_effective_mana(const Player *p);
 bool gateway_unlocked(GatewayId gw);
