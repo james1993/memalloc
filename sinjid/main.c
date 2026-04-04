@@ -9,6 +9,7 @@
 #include "data.h"
 #include "anim.h"
 #include "audio.h"
+#include "save.h"
 
 // ── Globals ───────────────────────────────────────────────────────────────
 Scene        g_scene   = SCENE_TITLE;
@@ -224,6 +225,11 @@ int main(int argc, char **argv)
 
         EndDrawing();
     }
+
+    // Autosave on clean exit (only if player has actually started a game)
+    if (g_scene != SCENE_TITLE && g_scene != SCENE_CLASS_SELECT &&
+        g_scene != SCENE_GAME_OVER)
+        save_game(&g_player);
 
     UnloadRenderTexture(rt_static);
     UnloadRenderTexture(rt_fade);

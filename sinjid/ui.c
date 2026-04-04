@@ -6,6 +6,7 @@
 #include "data.h"
 #include "anim.h"
 #include "audio.h"
+#include "save.h"
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -143,9 +144,30 @@ void ui_draw_title(void)
     txt(cx - txt_w("Shadow of the Warrior", 28)/2, 248, 28, C_WHITE, "Shadow of the Warrior");
     txt(cx - txt_w("A fan-made simplified clone", 18)/2, 290, 18, C_DIM, "A fan-made simplified clone");
 
-    Rectangle btn = { cx - 120, 400, 240, 50 };
-    if (ui_button(btn, "Begin Your Journey", true))
+    bool has_save = save_exists();
+
+    /* Continue button (only shown when a save exists) */
+    if (has_save) {
+        Rectangle cont = { cx - 120, 370, 240, 50 };
+        if (ui_button(cont, "Continue", true)) {
+            if (load_game(&g_player)) {
+                anim_combat_reset();
+                anim_fade_to(SCENE_HUB);
+            }
+        }
+    }
+
+    Rectangle btn = { cx - 120, has_save ? 432 : 400, 240, 50 };
+    if (ui_button(btn, "New Game", true))
         anim_fade_to(SCENE_CLASS_SELECT);
+
+    if (has_save) {
+        Rectangle del = { cx - 70, 496, 140, 34 };
+        if (ui_button(del, "Delete Save", true)) {
+            save_delete();
+            g_scene_dirty = true;
+        }
+    }
 
     txt(cx - txt_w("ESC to quit | F1 debug overlay", 16)/2,
         SCREEN_H - 40, 16, C_DIM, "ESC to quit | F1 debug overlay");
@@ -314,6 +336,18 @@ void ui_draw_hub(void)
         if (ui_button(lub, "Allocate Points", true))
             anim_fade_to(SCENE_LEVEL_UP);
     }
+
+    /* Save button */
+    static float save_flash = 0.0f;
+    save_flash -= GetFrameTime();
+    Rectangle save_btn = { (float)rx, (float)(SCREEN_H - 56), 140, 38 };
+    if (ui_button(save_btn, "Save Game", true)) {
+        save_game(&g_player);
+        save_flash = 2.0f;
+        g_scene_dirty = true;
+    }
+    if (save_flash > 0.0f)
+        txt(rx + 150, SCREEN_H - 48, 15, C_GREEN, "Saved!");
 }
 
 /* ── COMBAT ── */
