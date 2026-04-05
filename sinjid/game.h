@@ -176,6 +176,7 @@ typedef struct {
     FadeAnim     fade;
     EventQueue   events;
     bool         scene_dirty;
+    float        hub_save_flash;   // seconds remaining for "Saved!" flash in hub
 } GameCtx;
 
 // Single global instance – defined in main.c
@@ -213,9 +214,18 @@ extern int g_shop_adv_count;
 // ─────────────────────────────────────────────
 //  Helpers
 // ─────────────────────────────────────────────
+// Guard against redefinition (raylib.h defines these too)
+#ifndef MAX
+#define MAX(a,b) ((a)>(b)?(a):(b))
+#endif
+#ifndef MIN
+#define MIN(a,b) ((a)<(b)?(a):(b))
+#endif
+#ifndef CLAMP
 #define CLAMP(v,lo,hi) ((v)<(lo)?(lo):(v)>(hi)?(hi):(v))
-#define MAX(a,b)       ((a)>(b)?(a):(b))
-#define MIN(a,b)       ((a)<(b)?(a):(b))
+#endif
+
+#define MAX_PLAYER_LEVEL  50
 
 int  player_effective_str (const Player *p, const CombatState *cs);
 int  player_effective_spd (const Player *p, const CombatState *cs);

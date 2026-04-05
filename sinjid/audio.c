@@ -82,7 +82,7 @@ static Sound make_sound(float *buf, int frames)
         .data       = pcm
     };
     Sound s = LoadSoundFromWave(w);
-    free(pcm);
+    UnloadWave(w);  // frees w.data (pcm) through Raylib's allocator
     return s;
 }
 

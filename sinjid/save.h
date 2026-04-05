@@ -2,7 +2,7 @@
 #include "game.h"
 #include <stdbool.h>
 
-#define SAVE_VERSION  2          // bump when Player layout changes
+#define SAVE_VERSION  3          // bump when save format changes
 #define SAVE_PATH     "sinjid_save.dat"
 
 // Returns true on success

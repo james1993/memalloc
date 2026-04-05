@@ -72,15 +72,28 @@ static ItemType parse_item_type(const char *s)
 
 // ── skills.dat ────────────────────────────────────────────────────────────
 
+/* Return the skill array for a class and the per-class count slot. */
+static SkillDef *skill_arr_for(int cls, int *count_arr)
+{
+    switch (cls) {
+        case CLASS_ROGUE: return g_rogue_skills;
+        case CLASS_MAGE:  return g_mage_skills;
+        default:          return g_warrior_skills;
+    }
+    (void)count_arr;
+}
+
 static int load_skills(const char *path)
 {
     FILE *f = fopen(path, "r");
     if (!f) return 0;
 
+    /* counts[c] = how many skills have been written for class c so far */
+    int counts[CLASS_COUNT] = {0};
+
     SkillDef tmp = {0};
-    PlayerClass cur_class = CLASS_WARRIOR;
-    int idx = 0;
-    bool in_skill = false;
+    int      tmp_class = CLASS_WARRIOR;  /* class the current skill belongs to */
+    bool     in_skill  = false;
 
     char line[256];
     while (fgets(line, sizeof(line), f)) {
@@ -88,47 +101,43 @@ static int load_skills(const char *path)
         if (!*l || *l == '#') continue;
 
         if (*l == '[') {
-            // save previous record
-            if (in_skill && idx < MAX_SKILLS) {
-                SkillDef *arr = (cur_class == CLASS_WARRIOR) ? g_warrior_skills :
-                                (cur_class == CLASS_ROGUE)   ? g_rogue_skills   :
-                                                                g_mage_skills;
-                arr[idx++] = tmp;
+            /* Flush the previous skill into the correct class array */
+            if (in_skill && counts[tmp_class] < MAX_SKILLS) {
+                SkillDef *arr = skill_arr_for(tmp_class, NULL);
+                arr[counts[tmp_class]++] = tmp;
             }
             in_skill = (strncmp(l+1, "skill", 5) == 0);
-            if (in_skill) { memset(&tmp, 0, sizeof(tmp)); tmp.hits = 1; tmp.max_level = 5; tmp.level = 1; }
+            if (in_skill) {
+                memset(&tmp, 0, sizeof(tmp));
+                tmp_class     = CLASS_WARRIOR;  /* default until overridden by class= */
+                tmp.hits      = 1;
+                tmp.max_level = 5;
+                tmp.level     = 1;
+            }
             continue;
         }
+        if (!in_skill) continue;
 
         char key[64], val[128];
         kv(l, key, sizeof(key), val, sizeof(val));
 
-        if (strcmp(key, "class") == 0) {
-            if (in_skill && idx > 0) {
-                /* flush previous class */
-                SkillDef *arr = (cur_class == CLASS_WARRIOR) ? g_warrior_skills :
-                                (cur_class == CLASS_ROGUE)   ? g_rogue_skills   :
-                                                                g_mage_skills;
-                arr[idx-1] = tmp; /* already saved above, but reset idx */
-            }
-            cur_class = (strcmp(val, "rogue") == 0) ? CLASS_ROGUE :
+        if      (strcmp(key, "class")        == 0) {
+            tmp_class = (strcmp(val, "rogue") == 0) ? CLASS_ROGUE :
                         (strcmp(val, "mage")  == 0) ? CLASS_MAGE  : CLASS_WARRIOR;
-            idx = 0;
-        } else if (strcmp(key, "name")        == 0) strncpy(tmp.name, val, sizeof(tmp.name)-1);
-        else if (strcmp(key, "desc")          == 0) strncpy(tmp.desc, val, sizeof(tmp.desc)-1);
-        else if (strcmp(key, "effect")        == 0) tmp.effect       = parse_effect(val);
-        else if (strcmp(key, "base_value")    == 0) tmp.base_value   = atoi(val);
-        else if (strcmp(key, "apply_status")  == 0) tmp.apply_status = parse_status(val);
-        else if (strcmp(key, "mana_cost")     == 0) tmp.mana_cost    = atoi(val);
-        else if (strcmp(key, "hits")          == 0) tmp.hits         = atoi(val);
-        else if (strcmp(key, "max_level")     == 0) tmp.max_level    = atoi(val);
+        }
+        else if (strcmp(key, "name")         == 0) strncpy(tmp.name, val, sizeof(tmp.name)-1);
+        else if (strcmp(key, "desc")         == 0) strncpy(tmp.desc, val, sizeof(tmp.desc)-1);
+        else if (strcmp(key, "effect")       == 0) tmp.effect       = parse_effect(val);
+        else if (strcmp(key, "base_value")   == 0) tmp.base_value   = atoi(val);
+        else if (strcmp(key, "apply_status") == 0) tmp.apply_status = parse_status(val);
+        else if (strcmp(key, "mana_cost")    == 0) tmp.mana_cost    = atoi(val);
+        else if (strcmp(key, "hits")         == 0) tmp.hits         = atoi(val);
+        else if (strcmp(key, "max_level")    == 0) tmp.max_level    = atoi(val);
     }
-    // flush last
-    if (in_skill && idx < MAX_SKILLS) {
-        SkillDef *arr = (cur_class == CLASS_WARRIOR) ? g_warrior_skills :
-                        (cur_class == CLASS_ROGUE)   ? g_rogue_skills   :
-                                                        g_mage_skills;
-        arr[idx] = tmp;
+    /* Flush the final skill */
+    if (in_skill && counts[tmp_class] < MAX_SKILLS) {
+        SkillDef *arr = skill_arr_for(tmp_class, NULL);
+        arr[counts[tmp_class]++] = tmp;
     }
     fclose(f);
     return 1;

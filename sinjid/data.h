@@ -13,6 +13,7 @@ typedef struct {
     const char     *name;
 } EnemySkill;
 extern const EnemySkill g_enemy_skill_table[];
+extern const int        g_enemy_skill_table_count;
 
 /* Initialise all data tables from built-in defaults.
    Call once at startup before data_load_files(). */

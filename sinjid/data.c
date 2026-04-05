@@ -161,6 +161,8 @@ const EnemySkill g_enemy_skill_table[] = {
     { SKILL_EFFECT_DAMAGE,  250, "Shadow Slash"  },
     { SKILL_EFFECT_HEAL,     30, "Mend"          },
 };
+const int g_enemy_skill_table_count =
+    (int)(sizeof(g_enemy_skill_table) / sizeof(g_enemy_skill_table[0]));
 
 EnemyDef g_enemies[MAX_ENEMIES];
 int      g_enemies_count;

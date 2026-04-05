@@ -59,22 +59,24 @@ void player_init(Player *p, const char *name, PlayerClass pc)
 
 // ── Equipment stat helpers ────────────────────────────────────────────────
 
-static int equip_bonus(const Player *p, EquipSlot slot, int field)
+typedef enum { SF_LIFE=0, SF_MANA=1, SF_STR=2, SF_SPD=3, SF_DEF=4 } StatField;
+
+static int equip_bonus(const Player *p, EquipSlot slot, StatField field)
 {
     int id = p->equip[slot];
     if (id < 0 || id >= g_items_count) return 0;
     const ItemDef *it = &g_items[id];
     switch (field) {
-        case 0: return it->bonus_life;
-        case 1: return it->bonus_mana;
-        case 2: return it->bonus_str;
-        case 3: return it->bonus_spd;
-        case 4: return it->bonus_def;
+        case SF_LIFE: return it->bonus_life;
+        case SF_MANA: return it->bonus_mana;
+        case SF_STR:  return it->bonus_str;
+        case SF_SPD:  return it->bonus_spd;
+        case SF_DEF:  return it->bonus_def;
     }
     return 0;
 }
 
-static int total_equip_bonus(const Player *p, int field)
+static int total_equip_bonus(const Player *p, StatField field)
 {
     int total = 0;
     for (int s = 0; s < EQUIP_SLOT_COUNT; s++)
@@ -84,28 +86,28 @@ static int total_equip_bonus(const Player *p, int field)
 
 int player_effective_life(const Player *p)
 {
-    return p->base.max_life + total_equip_bonus(p, 0);
+    return p->base.max_life + total_equip_bonus(p, SF_LIFE);
 }
 int player_effective_mana(const Player *p)
 {
-    return p->base.max_mana + total_equip_bonus(p, 1);
+    return p->base.max_mana + total_equip_bonus(p, SF_MANA);
 }
 int player_effective_str(const Player *p, const CombatState *cs)
 {
     int bonus = cs ? cs->str_bonus : 0;
-    int v = p->base.strength + total_equip_bonus(p, 2) + bonus;
+    int v = p->base.strength + total_equip_bonus(p, SF_STR) + bonus;
     return MAX(1, v);
 }
 int player_effective_spd(const Player *p, const CombatState *cs)
 {
     int bonus = cs ? cs->spd_bonus : 0;
-    int v = p->base.speed + total_equip_bonus(p, 3) + bonus;
+    int v = p->base.speed + total_equip_bonus(p, SF_SPD) + bonus;
     return MAX(1, v);
 }
 int player_effective_def(const Player *p, const CombatState *cs)
 {
     int bonus = cs ? cs->def_bonus : 0;
-    int v = p->base.defense + total_equip_bonus(p, 4) + bonus;
+    int v = p->base.defense + total_equip_bonus(p, SF_DEF) + bonus;
     return MAX(0, v);
 }
 
@@ -115,7 +117,7 @@ bool player_add_xp(Player *p, int xp)
 {
     bool levelled = false;
     p->xp += xp;
-    while (p->xp >= p->xp_to_next && p->level < 50) {
+    while (p->xp >= p->xp_to_next && p->level < MAX_PLAYER_LEVEL) {
         p->xp       -= p->xp_to_next;
         p->level    += 1;
         p->xp_to_next = xp_for_level(p->level);
@@ -130,6 +132,7 @@ bool player_add_xp(Player *p, int xp)
 
 bool player_add_item(Player *p, int item_id)
 {
+    if (item_id < 0 || item_id >= g_items_count) return false;
     // Stack consumables
     if (g_items[item_id].type == ITEM_CONSUMABLE) {
         for (int i = 0; i < MAX_INVENTORY; i++) {

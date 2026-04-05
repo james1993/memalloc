@@ -17,8 +17,6 @@
 
 #define SPATH g_config.save_path
 
-#define SAVE_VERSION_TEXT  3     /* bump only for breaking field renames */
-
 /* ── Helpers ── */
 static char *ltrim(char *s)
 {
@@ -41,7 +39,7 @@ bool save_game(const Player *p)
     FILE *f = fopen(SPATH, "w");
     if (!f) return false;
 
-    write_int(f, "version",       SAVE_VERSION_TEXT);
+    write_int(f, "version",       SAVE_VERSION);
     write_str(f, "name",          p->name);
     write_int(f, "class",         (int)p->pc);
     write_int(f, "level",         p->level);
@@ -95,13 +93,31 @@ bool load_game(Player *p)
     FILE *f = fopen(SPATH, "r");
     if (!f) return false;
 
+    /* Pre-scan: read only the version field to reject incompatible saves
+       before populating any player data. */
+    {
+        int file_version = 0;
+        char line[256];
+        while (fgets(line, sizeof(line), f)) {
+            char *l = ltrim(line);
+            if (strncmp(l, "version=", 8) == 0) {
+                file_version = atoi(l + 8);
+                break;
+            }
+        }
+        if (file_version != SAVE_VERSION) {
+            fclose(f);
+            return false;
+        }
+        rewind(f);
+    }
+
     /* Zero-init then set defaults that a partial save shouldn't leave broken */
     memset(p, 0, sizeof(*p));
     for (int i = 0; i < EQUIP_SLOT_COUNT; i++) p->equip[i] = -1;
     for (int i = 0; i < MAX_INVENTORY;    i++) p->bag_ids[i] = -1;
     for (int i = 0; i < MAX_SKILLS;       i++) p->skill_level[i] = 1;
 
-    int file_version = 0;
     char line[256];
     while (fgets(line, sizeof(line), f)) {
         char *l = ltrim(line);
@@ -118,7 +134,7 @@ bool load_game(Player *p)
 
         int v = atoi(val);
 
-        if      (strcmp(key, "version")       == 0) file_version      = v;
+        if      (strcmp(key, "version")       == 0) { /* already validated */ }
         else if (strcmp(key, "name")          == 0) strncpy(p->name, val, sizeof(p->name)-1);
         else if (strcmp(key, "class")         == 0) p->pc             = (PlayerClass)v;
         else if (strcmp(key, "level")         == 0) p->level          = v;
@@ -164,10 +180,8 @@ bool load_game(Player *p)
 
     fclose(f);
 
-    /* Accept version 2 (old binary saves won't reach here) and current */
-    if (file_version != SAVE_VERSION_TEXT) return false;
     /* Basic sanity */
-    if (p->level < 1 || p->level > 50) return false;
+    if (p->level < 1 || p->level > MAX_PLAYER_LEVEL) return false;
 
     return true;
 }

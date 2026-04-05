@@ -80,7 +80,6 @@ static int enemy_tick_status(void)
 
 void combat_start(GatewayId gw, int floor_idx)
 {
-    srand((unsigned)time(NULL));
     CombatState *cs = &g_ctx.combat;
     memset(cs, 0, sizeof(*cs));
 
@@ -99,7 +98,7 @@ void combat_start(GatewayId gw, int floor_idx)
     cs->def_bonus      = 0;
     cs->enemy_ai_delay = 0.6f;
 
-    // Decide who goes first based on speed
+    // Decide who goes first based on speed; ties go to the player (intentional player-friendly tiebreak)
     cs->player_turn = (player_effective_spd(&g_ctx.player, &g_ctx.combat) >= cs->enemy.base_stats.speed);
 
     combat_log("Battle starts: %s", cs->enemy.name);
@@ -226,9 +225,14 @@ bool combat_action_skill(int skill_idx)
             combat_log("%s hits for %d!", sk->name, dmg);
             if (sk->apply_status && sk->apply_status != STATUS_NONE) {
                 apply_enemy_status(sk->apply_status, 3);
-                combat_log("%s is now %s!",
-                    e->name,
-                    (sk->apply_status == STATUS_SLOWED) ? "slowed" : "affected");
+                const char *sname =
+                    (sk->apply_status == STATUS_SLOWED)   ? "slowed"     :
+                    (sk->apply_status == STATUS_POISONED) ? "poisoned"   :
+                    (sk->apply_status == STATUS_STUNNED)  ? "stunned"    :
+                    (sk->apply_status == STATUS_POWERED)  ? "powered up" :
+                    (sk->apply_status == STATUS_SHIELDED) ? "shielded"   :
+                    (sk->apply_status == STATUS_DODGING)  ? "dodging"    : "affected";
+                combat_log("%s is now %s!", e->name, sname);
             }
             break;
         }
@@ -378,7 +382,8 @@ void combat_enemy_turn(void)
         // Pick a random available skill
         int sk_count = 0;
         while (sk_count < 3 && e->skill_ids[sk_count] != -1) sk_count++;
-        action = e->skill_ids[rand() % sk_count] + 1; // +1 to distinguish from 0
+        if (sk_count > 0)
+            action = e->skill_ids[rand() % sk_count] + 1; // +1 to distinguish from 0
     }
 
     if (action == 0) {
@@ -405,6 +410,10 @@ void combat_enemy_turn(void)
     } else {
         // Enemy skill
         int sk_id = action - 1;
+        if (sk_id < 0 || sk_id >= g_enemy_skill_table_count) {
+            g_ctx.combat.player_turn = true;
+            return;
+        }
         const EnemySkill *sk = &g_enemy_skill_table[sk_id];
         switch (sk->effect) {
             case SKILL_EFFECT_DAMAGE: {

@@ -1,5 +1,5 @@
 #include "scene.h"
-#include <assert.h>
+#include <raylib.h>
 
 void scene_init(SceneStack *ss, Scene initial)
 {
@@ -14,7 +14,10 @@ Scene scene_current(const SceneStack *ss)
 
 void scene_push(SceneStack *ss, Scene s)
 {
-    assert(ss->top < SCENE_STACK_CAP - 1);
+    if (ss->top >= SCENE_STACK_CAP - 1) {
+        TraceLog(LOG_ERROR, "SCENE: stack overflow — push ignored (scene %d)", (int)s);
+        return;
+    }
     ss->stack[++ss->top] = s;
 }
 

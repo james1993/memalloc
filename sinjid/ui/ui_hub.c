@@ -59,10 +59,11 @@ void ui_draw_hub(void)
     static const char *slot_names[] = { "Weapon", "Armor ", "Access" };
     for (int s = 0; s < EQUIP_SLOT_COUNT; s++) {
         int eid = g_ctx.player.equip[s];
+        bool valid = (eid >= 0 && eid < g_items_count);
         txt(rx, ry + 262 + s * 22, 15,
-            (eid >= 0) ? C_WHITE : C_DIM,
+            valid ? C_WHITE : C_DIM,
             TextFormat("%s: %s", slot_names[s],
-                       (eid >= 0) ? g_items[eid].name : "(none)"));
+                       valid ? g_items[eid].name : "(none)"));
     }
 
     txt(rx, ry + 344, 15, C_DIM, "-- Gateways --");
@@ -85,14 +86,12 @@ void ui_draw_hub(void)
             anim_fade_to(SCENE_LEVEL_UP);
     }
 
-    static float save_flash = 0.0f;
-    save_flash -= GetFrameTime();
     Rectangle save_btn = { (float)rx, (float)(SCREEN_H - 56), 140, 38 };
     if (ui_button(save_btn, "Save Game", true)) {
         save_game(&g_ctx.player);
-        save_flash = 2.0f;
+        g_ctx.hub_save_flash = 2.0f;
         g_ctx.scene_dirty = true;
     }
-    if (save_flash > 0.0f)
+    if (g_ctx.hub_save_flash > 0.0f)
         txt(rx + 150, SCREEN_H - 48, 15, C_GREEN, "Saved!");
 }

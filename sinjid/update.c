@@ -21,6 +21,12 @@ static void combat_update(float dt)
 /* ── Public dispatcher ───────────────────────────────────────────────── */
 void scene_update(float dt)
 {
+    /* Tick hub flash timer regardless of scene so it expires correctly */
+    if (g_ctx.hub_save_flash > 0.0f) {
+        g_ctx.hub_save_flash -= dt;
+        if (g_ctx.hub_save_flash < 0.0f) g_ctx.hub_save_flash = 0.0f;
+    }
+
     switch (G_SCENE) {
         case SCENE_COMBAT: combat_update(dt); break;
         default:           break;

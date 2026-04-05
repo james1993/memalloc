@@ -1,4 +1,5 @@
 #include "config.h"
+#include <raylib.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -45,8 +46,18 @@ int config_load(const char *path)
         else if (strcmp(key, "window_h")  == 0) g_config.window_h = atoi(val);
         else if (strcmp(key, "fps")       == 0) g_config.fps      = atoi(val);
         else if (strcmp(key, "volume")    == 0) g_config.volume   = (float)atof(val);
-        else if (strcmp(key, "save_path") == 0) strncpy(g_config.save_path, val, sizeof(g_config.save_path)-1);
-        else if (strcmp(key, "data_dir")  == 0) strncpy(g_config.data_dir,  val, sizeof(g_config.data_dir) -1);
+        else if (strcmp(key, "save_path") == 0) {
+            if (strlen(val) >= sizeof(g_config.save_path))
+                TraceLog(LOG_WARNING, "CONFIG: save_path value truncated to %d chars",
+                         (int)(sizeof(g_config.save_path) - 1));
+            strncpy(g_config.save_path, val, sizeof(g_config.save_path)-1);
+        }
+        else if (strcmp(key, "data_dir")  == 0) {
+            if (strlen(val) >= sizeof(g_config.data_dir))
+                TraceLog(LOG_WARNING, "CONFIG: data_dir value truncated to %d chars",
+                         (int)(sizeof(g_config.data_dir) - 1));
+            strncpy(g_config.data_dir,  val, sizeof(g_config.data_dir) -1);
+        }
     }
     fclose(f);
     return 1;

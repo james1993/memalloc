@@ -1,6 +1,8 @@
 #include <raylib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include "game.h"
 #include "config.h"
 #include "scene.h"
@@ -132,6 +134,9 @@ int main(int argc, char **argv)
     data_init_defaults();
     data_load_files(g_config.data_dir);
 
+    // Seed RNG once at startup (combat_start must NOT call srand)
+    srand((unsigned)time(NULL));
+
     audio_init();
     ui_init();
 
@@ -205,6 +210,9 @@ int main(int argc, char **argv)
             ClearBackground((Color){15,15,25,255});
 
             if (is_static_scene(G_SCENE)) {
+                /* Negative height flips the texture vertically:
+                   Raylib RenderTextures are stored bottom-up (OpenGL convention),
+                   so we must invert Y when blitting to the screen. */
                 DrawTextureRec(rt_static.texture,
                     (Rectangle){0, 0, SCREEN_W, -SCREEN_H},
                     (Vector2){0, 0}, WHITE);

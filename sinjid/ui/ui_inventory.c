@@ -12,10 +12,10 @@ void ui_draw_inventory(void)
     static const char *slot_labels[] = { "Weapon", "Armor ", "Access" };
     for (int s = 0; s < EQUIP_SLOT_COUNT; s++) {
         int eid = g_ctx.player.equip[s];
-        const char *nm = (eid >= 0) ? g_items[eid].name : "(empty)";
+        const char *nm = (eid >= 0 && eid < g_items_count) ? g_items[eid].name : "(empty)";
         Rectangle sr = { 34, (float)(102 + s * 44), 272, 36 };
         if (ui_button(sr, TextFormat("%s: %s", slot_labels[s], nm), true)
-            && eid >= 0)
+            && eid >= 0 && eid < g_items_count)
         {
             player_unequip(&g_ctx.player, (EquipSlot)s);
             s_inv_selected = -1;
