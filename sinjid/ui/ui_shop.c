@@ -20,7 +20,7 @@ void ui_draw_shop(void)
         DrawRectangleLinesEx(ir, 1, C_BORDER);
         Color tc = (g_ctx.player.gold >= it->price) ? C_WHITE : C_DIM;
         txt((int)ir.x + 8, (int)ir.y + 12, 15, tc, lbl);
-        Vector2 m = GetMousePosition();
+        Vector2 m = game_mouse();
         if (CheckCollisionPointRec(m, ir) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             s_shop_sel = (sel ? -1 : i);
             snd_click();

@@ -39,3 +39,14 @@ extern const Color C_RED;
 void txt  (int x, int y, int size, Color col, const char *s);
 int  txt_w(const char *s, int size);
 void txt_c(Rectangle r, int size, Color col, const char *s);
+
+/* Mouse position scaled from window space → game canvas (SCREEN_W × SCREEN_H).
+   Always use this instead of GetMousePosition() so input works correctly when
+   the window is a different size from the internal render resolution. */
+static inline Vector2 game_mouse(void)
+{
+    Vector2 m = GetMousePosition();
+    m.x = m.x * (float)SCREEN_W / (float)GetScreenWidth();
+    m.y = m.y * (float)SCREEN_H / (float)GetScreenHeight();
+    return m;
+}

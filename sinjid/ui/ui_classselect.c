@@ -35,7 +35,7 @@ void ui_draw_class_select(void)
             txt((int)box.x+14, (int)box.y+130, 16, C_WHITE, TextFormat("SPD:   %d", st.speed));
             txt((int)box.x+14, (int)box.y+150, 16, C_WHITE, TextFormat("DEF:   %d", st.defense));
 
-            Vector2 m = GetMousePosition();
+            Vector2 m = game_mouse();
             if (CheckCollisionPointRec(m, box) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 s_chosen_class = classes[i].pc;
                 snd_click();

@@ -95,7 +95,7 @@ void ui_text_center(Rectangle r, const char *text, int font_size, Color col)
 
 bool ui_button(Rectangle r, const char *label, bool enabled)
 {
-    Vector2 mouse = GetMousePosition();
+    Vector2 mouse = game_mouse();
     bool hovered  = enabled && CheckCollisionPointRec(mouse, r);
     Color bg      = !enabled ? C_BTN_DIS : (hovered ? C_BTN_HOV : C_BTN);
     Color tc      = !enabled ? C_DIM     : C_WHITE;

@@ -39,7 +39,7 @@ void ui_draw_inventory(void)
         DrawRectangleRec(br, sel ? (Color){60,60,110,255} : C_BTN);
         DrawRectangleLinesEx(br, 1, C_BORDER);
         txt((int)br.x + 8, (int)br.y + 10, 15, C_WHITE, lbl);
-        Vector2 m = GetMousePosition();
+        Vector2 m = game_mouse();
         if (CheckCollisionPointRec(m, br) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             s_inv_selected = (sel ? -1 : i);
             snd_click();
