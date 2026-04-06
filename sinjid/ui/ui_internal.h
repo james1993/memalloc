@@ -46,7 +46,9 @@ void txt_c(Rectangle r, int size, Color col, const char *s);
 static inline Vector2 game_mouse(void)
 {
     Vector2 m = GetMousePosition();
-    m.x = m.x * (float)SCREEN_W / (float)GetScreenWidth();
-    m.y = m.y * (float)SCREEN_H / (float)GetScreenHeight();
+    Rectangle vp = game_viewport();
+    /* Subtract letterbox offset, then scale to game canvas coords */
+    m.x = (m.x - vp.x) * (float)SCREEN_W / vp.width;
+    m.y = (m.y - vp.y) * (float)SCREEN_H / vp.height;
     return m;
 }

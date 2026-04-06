@@ -227,6 +227,23 @@ extern int g_shop_adv_count;
 
 #define MAX_PLAYER_LEVEL  50
 
+/* Letterboxed viewport: largest SCREEN_W:SCREEN_H rect that fits the window.
+   Black bars appear outside it when the window aspect ratio differs. */
+static inline Rectangle game_viewport(void)
+{
+    float win_w  = (float)GetScreenWidth();
+    float win_h  = (float)GetScreenHeight();
+    float aspect = (float)SCREEN_W / (float)SCREEN_H;
+    float vp_w, vp_h;
+    if (win_w / win_h > aspect) {   /* window wider → pillar bars */
+        vp_h = win_h;  vp_w = vp_h * aspect;
+    } else {                         /* window taller → letter bars */
+        vp_w = win_w;  vp_h = vp_w / aspect;
+    }
+    return (Rectangle){ (win_w - vp_w) * 0.5f, (win_h - vp_h) * 0.5f,
+                         vp_w, vp_h };
+}
+
 int  player_effective_str (const Player *p, const CombatState *cs);
 int  player_effective_spd (const Player *p, const CombatState *cs);
 int  player_effective_def (const Player *p, const CombatState *cs);

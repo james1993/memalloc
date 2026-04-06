@@ -9,8 +9,8 @@ Config g_config;
 
 void config_init_defaults(void)
 {
-    g_config.window_w = 1280;
-    g_config.window_h = 960;
+    g_config.window_w = 0;   // 0 = auto-size from monitor at startup
+    g_config.window_h = 0;
     g_config.fps      = 60;
     g_config.volume   = 1.0f;
     strncpy(g_config.save_path, "sinjid_save.dat", sizeof(g_config.save_path) - 1);

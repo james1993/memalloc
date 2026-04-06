@@ -25,13 +25,9 @@ GameCtx g_ctx;
 //   The combat scene is excluded from static caching because of continuous
 //   animation; all other scenes cache their heavy text/panel draw calls here.
 
-static RenderTexture2D rt_static;
-static RenderTexture2D rt_fade;
-
-static bool is_static_scene(Scene s)
-{
-    return s != SCENE_COMBAT;
-}
+/* Single render texture: all scenes draw here at SCREEN_W×SCREEN_H,
+   then it is blitted letterboxed to the actual window. */
+static RenderTexture2D rt_game;
 
 static void draw_scene(void)
 {
@@ -121,14 +117,36 @@ int main(int argc, char **argv)
 {
     bool demo_mode = (argc > 1 && strcmp(argv[1], "--demo") == 0);
 
-    // Config must be loaded before InitWindow so window size/FPS are correct
+    // Config must be loaded before InitWindow so FPS and paths are known.
+    // window_w/h == 0 means "auto-size from monitor" (the default).
     config_init_defaults();
     config_load(CONFIG_PATH);
 
+    // Open with a safe placeholder size; resize below once we can query the monitor
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(g_config.window_w, g_config.window_h, GAME_TITLE);
+    InitWindow(1024, 768, GAME_TITLE);
     SetTargetFPS(g_config.fps);
     SetExitKey(KEY_NULL);
+
+    // ── Auto-size window to 80% of the current monitor ───────────────────
+    if (g_config.window_w == 0 || g_config.window_h == 0) {
+        int mon   = GetCurrentMonitor();
+        int mon_w = GetMonitorWidth(mon);
+        int mon_h = GetMonitorHeight(mon);
+        // Maintain SCREEN_W:SCREEN_H aspect ratio at ~80% of monitor height
+        float scale = 0.80f;
+        int w = (int)(mon_h * scale) * SCREEN_W / SCREEN_H;
+        int h = (int)(mon_h * scale);
+        if (w > (int)(mon_w * scale)) {   // clamp to monitor width
+            w = (int)(mon_w * scale);
+            h = w * SCREEN_H / SCREEN_W;
+        }
+        if (w < 1024) { w = 1024; h = 768; }   // minimum
+        SetWindowSize(w, h);
+        SetWindowPosition((mon_w - w) / 2, (mon_h - h) / 2);
+    } else {
+        SetWindowSize(g_config.window_w, g_config.window_h);
+    }
 
     // Load game data (defaults first, then override from data/ files)
     data_init_defaults();
@@ -145,18 +163,11 @@ int main(int argc, char **argv)
     evt_init(&g_ctx.events);
     g_ctx.scene_dirty = true;
 
-    rt_static = LoadRenderTexture(SCREEN_W, SCREEN_H);
-    rt_fade   = LoadRenderTexture(SCREEN_W, SCREEN_H);
-
-    // Pre-fill fade texture with solid black
-    BeginTextureMode(rt_fade);
-        ClearBackground(BLACK);
-    EndTextureMode();
+    rt_game = LoadRenderTexture(SCREEN_W, SCREEN_H);
 
     if (demo_mode) {
         run_demo();
-        UnloadRenderTexture(rt_static);
-        UnloadRenderTexture(rt_fade);
+        UnloadRenderTexture(rt_game);
         ui_close();
         audio_close();
         CloseWindow();
@@ -197,37 +208,31 @@ int main(int argc, char **argv)
             last_scene        = G_SCENE;
         }
 
-        // ── Static layer: redraw only when dirty ──────────────────────────
-        if (is_static_scene(G_SCENE) && g_ctx.scene_dirty) {
-            BeginTextureMode(rt_static);
+        // ── Render scene into fixed-res texture ───────────────────────────
+        // Static scenes only re-render when dirty; combat re-renders every frame.
+        bool is_static = (G_SCENE != SCENE_COMBAT);
+        if (!is_static || g_ctx.scene_dirty) {
+            BeginTextureMode(rt_game);
                 draw_scene();
             EndTextureMode();
-            g_ctx.scene_dirty = false;
+            if (is_static) g_ctx.scene_dirty = false;
         }
 
-        // ── Composite to screen ───────────────────────────────────────────
+        // ── Composite to screen with letterboxing ─────────────────────────
         BeginDrawing();
-            ClearBackground((Color){15,15,25,255});
+            ClearBackground(BLACK);   // black bars outside the viewport
 
-            int win_w = GetScreenWidth();
-            int win_h = GetScreenHeight();
+            Rectangle vp = game_viewport();
+            /* Negative source height flips the texture vertically:
+               RenderTextures are stored bottom-up (OpenGL convention). */
+            DrawTexturePro(rt_game.texture,
+                (Rectangle){0, 0, (float)SCREEN_W, -(float)SCREEN_H},
+                vp, (Vector2){0, 0}, 0.0f, WHITE);
 
-            if (is_static_scene(G_SCENE)) {
-                /* Scale the fixed-resolution render texture to fill the window.
-                   Source height is negated to flip vertically: Raylib RenderTextures
-                   are stored bottom-up (OpenGL convention). */
-                DrawTexturePro(rt_static.texture,
-                    (Rectangle){0, 0, (float)SCREEN_W, -(float)SCREEN_H},
-                    (Rectangle){0, 0, (float)win_w, (float)win_h},
-                    (Vector2){0, 0}, 0.0f, WHITE);
-            } else {
-                draw_scene();
-            }
-
-            // Scene-fade overlay
+            // Scene-fade overlay (covers only the game viewport)
             if (g_ctx.fade.active || g_ctx.fade.fade_alpha > 0.0f) {
                 unsigned char a = (unsigned char)(g_ctx.fade.fade_alpha * 255.0f);
-                DrawRectangle(0, 0, win_w, win_h, (Color){0,0,0,a});
+                DrawRectangleRec(vp, (Color){0,0,0,a});
             }
 
             // Debug overlay (F1)
@@ -254,8 +259,7 @@ int main(int argc, char **argv)
         G_SCENE != SCENE_GAME_OVER)
         save_game(&g_ctx.player);
 
-    UnloadRenderTexture(rt_static);
-    UnloadRenderTexture(rt_fade);
+    UnloadRenderTexture(rt_game);
     ui_close();
     audio_close();
     CloseWindow();
