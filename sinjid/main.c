@@ -121,14 +121,14 @@ int main(int argc, char **argv)
 {
     bool demo_mode = (argc > 1 && strcmp(argv[1], "--demo") == 0);
 
+    // Config must be loaded before InitWindow so window size/FPS are correct
+    config_init_defaults();
+    config_load(CONFIG_PATH);
+
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(g_config.window_w, g_config.window_h, GAME_TITLE);
     SetTargetFPS(g_config.fps);
     SetExitKey(KEY_NULL);
-
-    // Load config first so window size, fps, volume, and paths are known
-    config_init_defaults();
-    config_load(CONFIG_PATH);
 
     // Load game data (defaults first, then override from data/ files)
     data_init_defaults();
@@ -209,13 +209,17 @@ int main(int argc, char **argv)
         BeginDrawing();
             ClearBackground((Color){15,15,25,255});
 
+            int win_w = GetScreenWidth();
+            int win_h = GetScreenHeight();
+
             if (is_static_scene(G_SCENE)) {
-                /* Negative height flips the texture vertically:
-                   Raylib RenderTextures are stored bottom-up (OpenGL convention),
-                   so we must invert Y when blitting to the screen. */
-                DrawTextureRec(rt_static.texture,
-                    (Rectangle){0, 0, SCREEN_W, -SCREEN_H},
-                    (Vector2){0, 0}, WHITE);
+                /* Scale the fixed-resolution render texture to fill the window.
+                   Source height is negated to flip vertically: Raylib RenderTextures
+                   are stored bottom-up (OpenGL convention). */
+                DrawTexturePro(rt_static.texture,
+                    (Rectangle){0, 0, (float)SCREEN_W, -(float)SCREEN_H},
+                    (Rectangle){0, 0, (float)win_w, (float)win_h},
+                    (Vector2){0, 0}, 0.0f, WHITE);
             } else {
                 draw_scene();
             }
@@ -223,7 +227,7 @@ int main(int argc, char **argv)
             // Scene-fade overlay
             if (g_ctx.fade.active || g_ctx.fade.fade_alpha > 0.0f) {
                 unsigned char a = (unsigned char)(g_ctx.fade.fade_alpha * 255.0f);
-                DrawRectangle(0, 0, SCREEN_W, SCREEN_H, (Color){0,0,0,a});
+                DrawRectangle(0, 0, win_w, win_h, (Color){0,0,0,a});
             }
 
             // Debug overlay (F1)
