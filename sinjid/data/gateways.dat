@@ -1,0 +1,23 @@
+# gateways.dat – maps gateway floors to enemy indices
+# Enemy indices refer to the order enemies appear in enemies.dat (0-based)
+
+[human]
+floor=0
+floor=2
+floor=4
+floor=7
+floor=10
+
+[monster]
+floor=11
+floor=12
+floor=13
+floor=14
+floor=15
+
+[dark]
+floor=16
+floor=17
+floor=18
+floor=19
+floor=20
