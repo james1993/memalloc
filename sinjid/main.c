@@ -201,22 +201,13 @@ int main(int argc, char **argv)
         // Update animations
         anim_update(dt);
 
-        // Detect scene change → mark dirty
-        static Scene last_scene = -1;
-        if (G_SCENE != last_scene) {
-            g_ctx.scene_dirty = true;
-            last_scene        = G_SCENE;
-        }
-
-        // ── Render scene into fixed-res texture ───────────────────────────
-        // Static scenes only re-render when dirty; combat re-renders every frame.
-        bool is_static = (G_SCENE != SCENE_COMBAT);
-        if (!is_static || g_ctx.scene_dirty) {
-            BeginTextureMode(rt_game);
-                draw_scene();
-            EndTextureMode();
-            if (is_static) g_ctx.scene_dirty = false;
-        }
+        // ── Render scene into fixed-res texture (every frame) ────────────
+        // ui_button() both draws and polls for clicks — skipping render for
+        // "static" scenes would prevent input from being detected entirely.
+        BeginTextureMode(rt_game);
+            draw_scene();
+        EndTextureMode();
+        g_ctx.scene_dirty = false;
 
         // ── Composite to screen with letterboxing ─────────────────────────
         BeginDrawing();
